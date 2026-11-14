@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Golden Hour Sets</title>
+<title>S1 Productions</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="DJ and photographer. Book a set, a shoot, or both.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -283,7 +283,7 @@ footer a { color: var(--ink-soft); }
 
 <header class="nav">
   <div class="wrap">
-    <a class="brand" href="#top" data-fill="name">Your Name</a>
+    <a class="brand" href="#top" data-fill="name">S1 Productions</a>
     <nav class="nav-links" aria-label="Main">
       <a href="#listen">Listen</a>
       <a href="#photos">Photos</a>
@@ -297,8 +297,8 @@ footer a { color: var(--ink-soft); }
   <section class="hero">
     <div class="wrap">
       <div>
-        <p class="label" data-fill="city">Based in Your City · Booking now</p>
-        <h1><span data-fill="first">Your</span><br><em data-fill="last">Name.</em></h1>
+        <p class="label" data-fill="city">DJ &amp; photographer · Booking now</p>
+        <h1><span data-fill="first">S1</span><br><em data-fill="last">Productions.</em></h1>
         <div class="roles"><span class="chip">DJ</span><span class="chip">Photographer</span><span class="chip">Both at once</span></div>
         <p class="lede">I play the records that keep a room easy, and I take the photos that make you remember it.</p>
         <div class="ctas">
@@ -360,10 +360,10 @@ footer a { color: var(--ink-soft); }
       <div class="portrait" id="portrait"></div>
       <div class="about-text">
         <span class="label">About</span>
-        <h2 id="about-h" class="big">Hey, I'm <span data-fill="first">Your</span>. I care about how your night feels, and how you'll remember it.</h2>
+        <h2 id="about-h" class="big">This is <span data-fill="name">S1 Productions</span>. I care about how your night feels, and how you'll remember it.</h2>
         <p>I started out digging through my family's old records and borrowing a camera I wasn't supposed to touch. Both turned into the same habit: paying attention. To what a crowd wants before they know it. To the second the light hits right.</p>
         <p>When you book me, you get someone who shows up early, reads the room, and treats your event like it matters, because it does. No stiff poses, no generic playlists. Just good music, real moments, and photos you'll actually want to post.</p>
-        <p class="sig" data-fill="first">Your</p>
+        <p class="sig">— <span data-fill="first">S1</span></p>
       </div>
     </div>
   </section>
@@ -405,7 +405,7 @@ footer a { color: var(--ink-soft); }
         <div class="reach">
           <a class="btn solid" id="ig-btn" href="#" target="_blank" rel="noopener">DM me on Instagram <span aria-hidden="true">→</span></a>
           <a class="btn" id="mail-btn" href="#">Email me <span aria-hidden="true">→</span></a>
-          <div class="copy-row"><span id="email-text">you@gmail.com</span><button type="button" id="copy-email">Copy email</button><span id="copied" aria-live="polite"></span></div>
+          <div class="copy-row"><span id="email-text">s1mriiarmas@gmail.com</span><button type="button" id="copy-email">Copy email</button><span id="copied" aria-live="polite"></span></div>
         </div>
       </div>
       <form id="book-form" novalidate>
@@ -429,7 +429,7 @@ footer a { color: var(--ink-soft); }
 
 <footer>
   <div class="wrap">
-    <span>© <span id="yr"></span> <span data-fill="name">Your Name</span>. DJ &amp; photographer.</span>
+    <span>© <span id="yr"></span> <span data-fill="name">S1 Productions</span>. DJ &amp; photographer.</span>
     <span><a id="ig-foot" href="#" target="_blank" rel="noopener">Instagram</a> · <a id="mail-foot" href="#">Email</a></span>
   </div>
 </footer>
@@ -448,10 +448,10 @@ footer a { color: var(--ink-soft); }
      Mixcloud page. Example entries below are placeholders.
    ===================================================================== */
 const CONFIG = {
-  name: "Your Name",
-  city: "Your City",
-  instagram: "yourhandle",          // no @
-  email: "you@gmail.com",
+  name: "S1 Productions",
+  city: "",                         // add your city here, e.g. "Los Angeles"
+  instagram: "thecolor.ri",          // no @
+  email: "s1mriiarmas@gmail.com",
   portrait: "",                     // e.g. "photos/me.jpg"
   mixes: [
     { title: "Sunday Orange Juice", mood: "Soul & slow funk", bpm: "88–96", length: "42:10", src: "", link: "" },
@@ -473,7 +473,7 @@ const CONFIG = {
 
 const $ = (s) => document.querySelector(s);
 const parts = CONFIG.name.trim().split(/\s+/);
-const fills = { name: CONFIG.name, first: parts[0], last: (parts.slice(1).join(" ") || parts[0]) + ".", city: `Based in ${CONFIG.city} · Booking now` };
+const fills = { name: CONFIG.name, first: parts[0], last: (parts.slice(1).join(" ") || parts[0]) + ".", city: CONFIG.city ? `Based in ${CONFIG.city} · Booking now` : "DJ & photographer · Booking now" };
 document.querySelectorAll("[data-fill]").forEach((el) => { el.textContent = fills[el.dataset.fill]; });
 document.title = `${CONFIG.name} · DJ & Photographer`;
 $("#yr").textContent = new Date().getFullYear();
