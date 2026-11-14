@@ -138,8 +138,9 @@ section { scroll-margin-top: 80px; }
 
 /* ---------- Listen: festival stage ---------- */
 .listen { position: relative; overflow: hidden; isolation: isolate; background: #09081A; transition: --a 1s, --b 1s; }
-.stage-photo { position: absolute; inset: 0; z-index: -3; }
-.stage-photo img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) contrast(1.15) brightness(.75); }
+.stage-photo { position: absolute; inset: 0 0 0 34%; z-index: -3; -webkit-mask-image: linear-gradient(to right, transparent, #000 35%); mask-image: linear-gradient(to right, transparent, #000 35%); }
+@media (max-width: 760px) { .stage-photo { left: 0; -webkit-mask-image: linear-gradient(to bottom, #000 40%, transparent); mask-image: linear-gradient(to bottom, #000 40%, transparent); opacity: .7; } }
+.stage-photo img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; filter: grayscale(1) contrast(1.2) brightness(.9); }
 .stage-photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, var(--b), var(--a)); mix-blend-mode: color; opacity: .9; }
 .listen::before { content: ""; position: absolute; inset: 0; z-index: -2; pointer-events: none;
   background: radial-gradient(50% 70% at 78% 40%, color-mix(in srgb, var(--a) 38%, transparent), transparent 70%), radial-gradient(40% 60% at 10% 90%, color-mix(in srgb, var(--b) 26%, transparent), transparent 70%), linear-gradient(90deg, rgba(9,8,26,.92) 0%, rgba(9,8,26,.55) 45%, rgba(9,8,26,.2) 100%);
@@ -214,8 +215,8 @@ section { scroll-margin-top: 80px; }
 .reel { position: relative; aspect-ratio: 2.39 / 1; max-width: 100%; border-radius: 4px; overflow: hidden; background: #000; margin-bottom: 22px; }
 .reel .slide { position: absolute; inset: 0; opacity: 0; transition: opacity 1.6s ease; }
 .reel .slide.on { opacity: 1; }
-.reel .slide .ph, .reel .slide img { position: absolute; inset: -6%; width: 112%; height: 112%; object-fit: cover; }
-.reel .slide.on .ph, .reel .slide.on img { animation: kb 7.5s linear both; }
+.reel .slide .ph, .reel .slide img, .reel .slide video { position: absolute; inset: -6%; width: 112%; height: 112%; object-fit: cover; }
+.reel .slide.on .ph, .reel .slide.on img, .reel .slide.on video { animation: kb 7.5s linear both; }
 @keyframes kb { from { transform: scale(1) translateX(1.5%); } to { transform: scale(1.14) translateX(-3%); } }
 .reel .streaks { position: absolute; inset: 0; z-index: 1; mix-blend-mode: screen; background: repeating-linear-gradient(100deg, transparent 0 70px, rgba(255,236,210,.1) 70px 73px, transparent 73px 160px); animation: pan 14s linear infinite; }
 @keyframes pan { to { background-position: 640px 0; } }
@@ -238,6 +239,7 @@ section { scroll-margin-top: 80px; }
 .readout { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; font-family: var(--mono); font-size: 13px; letter-spacing: .06em; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-variant-numeric: tabular-nums; }
 .readout b { color: var(--cream); font-weight: 500; }
 .readout .sp { flex: 1; }
+@media (max-width: 560px) { .readout .r-title { display: none; } }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; }
 .filters button { font: 500 14px var(--body); padding: 9px 16px; border-radius: 999px; cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--cream); transition: background .2s; }
 .filters button[aria-pressed="true"] { background: var(--cream); color: #070709; border-color: var(--cream); }
@@ -252,8 +254,8 @@ section { scroll-margin-top: 80px; }
 .shot { position: relative; margin: 0; border: 0; padding: 0; cursor: pointer; text-align: left; border-radius: 6px; overflow: hidden; background: var(--panel); color: #FFF7EC; aspect-ratio: 4 / 5; max-width: 100%; animation: cutIn .6s cubic-bezier(.7,0,.2,1) both; animation-delay: var(--d, 0s); }
 @keyframes cutIn { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 .shot.wide { grid-column: span 2; aspect-ratio: 8 / 5; }
-.shot img, .shot .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
-.shot:hover img, .shot:hover .ph { transform: scale(1.05); }
+.shot img, .shot video, .shot .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+.shot:hover img, .shot:hover video, .shot:hover .ph { transform: scale(1.05); }
 .ph::after { content: ""; position: absolute; inset: 0; opacity: .16; mix-blend-mode: overlay; background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.5) 0 1px, transparent 1px 3px); }
 .shot .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 30px 12px 10px; background: linear-gradient(transparent, rgba(6,6,8,.75)); display: flex; justify-content: space-between; gap: 10px; align-items: end; }
 .shot .cap b { font-weight: 600; font-size: 15px; }
@@ -284,7 +286,7 @@ section { scroll-margin-top: 80px; }
 .lightbox figure { margin: 0; width: min(900px, 100%); animation: develop .6s ease both; }
 @keyframes develop { from { filter: brightness(2.2) saturate(0); transform: scale(.97); } }
 .lightbox .frame { position: relative; width: 100%; aspect-ratio: 3/2; max-height: 72vh; border-radius: 6px; overflow: hidden; background: #000; }
-.lightbox .frame img, .lightbox .frame .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.lightbox .frame img, .lightbox .frame video, .lightbox .frame .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .lightbox figcaption { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; font-size: 15px; }
 .lightbox figcaption span { font-family: var(--mono); font-size: 12px; color: var(--muted); }
 .lb-nav { display: flex; gap: 10px; margin-top: 14px; }
@@ -296,7 +298,7 @@ section { scroll-margin-top: 80px; }
 .giant { position: absolute; left: 0; right: 0; top: 0; text-align: center; font-family: var(--display); font-size: clamp(130px, 27vw, 360px); line-height: .8; letter-spacing: .01em;
   background: linear-gradient(180deg, var(--pink) 0%, var(--violet) 70%, transparent 100%); -webkit-background-clip: text; background-clip: text; color: transparent; opacity: .92; pointer-events: none; user-select: none; }
 .portrait { grid-column: 2; grid-row: 1; position: relative; align-self: end; z-index: 1; width: 100%; max-width: 440px; margin-inline: auto; aspect-ratio: 4 / 5; }
-.portrait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top center; -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent); mask-image: linear-gradient(to bottom, #000 78%, transparent); }
+.portrait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top center; border-radius: 220px 220px 0 0; -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent); mask-image: linear-gradient(to bottom, #000 78%, transparent); }
 .portrait svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .intro { grid-column: 1; grid-row: 1; position: relative; z-index: 2; padding-bottom: 30px; }
 .hello { font-family: var(--script); font-size: clamp(52px, 6vw, 76px); line-height: .8; color: #fff; display: block; transform: rotate(-4deg); transform-origin: left; margin-bottom: 4px; }
@@ -329,6 +331,8 @@ section { scroll-margin-top: 80px; }
 .steps b { display: block; font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--pink); font-weight: 500; }
 .steps span { color: var(--muted); font-size: 14px; line-height: 1.4; }
 .quote { background: linear-gradient(160deg, #C2407F, #6E3BB8); display: grid; align-content: space-between; gap: 22px; }
+.quote .word { font-family: Georgia, "Times New Roman", serif; font-size: 44px; line-height: 1; color: #fff; }
+.quote .pron { font-family: Georgia, "Times New Roman", serif; font-size: 15px; color: rgba(255,255,255,.85); margin-top: 6px; }
 .quote .qm { font-family: var(--display); font-size: 70px; line-height: .6; color: rgba(255,255,255,.85); }
 .quote p { font-size: 19px; line-height: 1.4; color: #fff; }
 .quote .sig { font-family: var(--script); font-size: 64px; line-height: .8; color: #fff; }
@@ -531,7 +535,7 @@ footer a { color: var(--muted); }
           <div class="dots" id="reel-dots"></div>
         </div>
         <div class="readout" aria-hidden="true">
-          <span class="rec">REC</span><span>ISO <b id="r-iso">400</b></span><span><b id="r-ss">1/250</b></span><span><b id="r-f">f/2.8</b></span><span class="sp"></span><span><b id="r-count">08</b> frames</span>
+          <span class="rec">REC</span><span>FRAME <b id="r-frame">01A</b></span><span><b id="r-cat">ALL</b></span><span class="r-title"><b id="r-title">Point at a photo</b></span><span class="sp"></span><span><b id="r-count">08</b> frames</span>
         </div>
         <div class="viewfinder" id="vf">
           <span class="c c1"></span><span class="c c2"></span><span class="c c3"></span><span class="c c4"></span>
@@ -542,7 +546,7 @@ footer a { color: var(--muted); }
           <div class="tl-head"><span>EDIT · S1_REEL_V3</span><b id="tc">00:00:00:00</b></div>
           <div class="tracks"><div class="track" id="tl-video"></div><div class="track audio" id="tl-audio"></div><div class="playhead"></div></div>
         </div>
-        <p class="gallery-foot">Cars, weddings, sports, people, animals. Tap a photo to take the shot. More on <a id="ig-more" href="#">Instagram</a>.</p>
+        <p class="gallery-foot">Events, portraits and the city. I shoot cars, weddings, sports and animals too. Tap a photo to take the shot. More on <a id="ig-more" href="#">Instagram</a>.</p>
       </div>
     </div>
     <div class="sprockets rev" aria-hidden="true"></div>
@@ -590,8 +594,8 @@ footer a { color: var(--muted); }
           </ol>
         </div>
         <div class="panel quote">
-          <span class="qm" aria-hidden="true">“</span>
-          <p>Good music and good photos do the same thing. They make you feel the night again.</p>
+          <div><div class="word">music</div><div class="pron">/ˈmyoozik/ &nbsp; noun</div></div>
+          <p>Indefinable by words alone. It is not only something you hear but what you feel. It is something the world would be lost without.</p>
           <div>
             <span class="sig">S1</span><br>
             <small>Let's make something good together ✦</small>
@@ -696,23 +700,26 @@ const CONFIG = {
   city: "",                         // e.g. "Los Angeles"
   instagram: "thecolor.ri",         // no @
   email: "s1mriiarmas@gmail.com",
-  portrait: "",                     // e.g. "photos/me.png"
-  djPhoto: "",                      // e.g. "photos/dj.jpg"
+  portrait: "media/on-the-decks.jpg",
+  djPhoto: "media/dj-set.jpg",
   mixes: [
     { title: "Sunday Orange Juice", desc: "Soul and slow funk for long brunches and golden hour. Easy on the ears, heavy on the feeling.", mood: "Soul & slow funk", bpm: "88–96", length: "42:10", colors: ["#FF5C93", "#FFA06A"], src: "", link: "" },
     { title: "Rooftop 6:47pm",      desc: "R&B and West Coast for when the sun dips and the drinks get poured.", mood: "R&B & West Coast", bpm: "92–100", length: "58:30", colors: ["#4C8DFF", "#47E0FF"], src: "", link: "" },
     { title: "Late Checkout",       desc: "Disco edits and boogie for the part of the night nobody wants to end.", mood: "Disco & boogie", bpm: "112–120", length: "61:05", colors: ["#B07BFF", "#FF6FB5"], src: "", link: "" }
   ],
-  // reel: true puts a photo in the slow-motion B-roll at the top; line is its subtitle
+  // src = photo (or video) file. pos = which part to keep when cropped.
+  // wide: true = double-width tile. reel: true = in the slow-motion B-roll; line = its subtitle.
   photos: [
-    { title: "Night run",          cat: "Cars",     exif: "35mm · f/1.8 · 1/40 · ISO 800",    src: "", tint: ["#1B2B3A", "#D9622B"], wide: true, reel: true, line: "Night run. Panned at 1/40, played back slow." },
-    { title: "The first look",     cat: "Weddings", exif: "85mm · f/1.4 · 1/500 · ISO 200",   src: "", tint: ["#F0DCC0", "#B98A6A"], reel: true, line: "The first look. Nobody said a word." },
-    { title: "Fourth quarter",     cat: "Sports",   exif: "200mm · f/2.8 · 1/2000 · ISO 3200", src: "", tint: ["#203A5C", "#E8B24A"], reel: true, line: "Fourth quarter. Frozen at 1/2000." },
-    { title: "Golden hour portrait", cat: "People", exif: "50mm · f/1.8 · 1/640 · ISO 100",   src: "", tint: ["#EBB453", "#B4452A"] },
-    { title: "Mid-air",            cat: "Animals",  exif: "70mm · f/2.8 · 1/1600 · ISO 400",  src: "", tint: ["#C9A66B", "#4F6B4A"], reel: true, line: "Mid-air. Good boy, 120 frames a second." },
-    { title: "Chrome & sunset",    cat: "Cars",     exif: "85mm · f/2 · 1/800 · ISO 100",     src: "", tint: ["#E07A3A", "#2A2F3A"] },
-    { title: "The send-off",       cat: "Weddings", exif: "35mm · f/2 · 1/160 · ISO 1600",    src: "", tint: ["#3B2A4A", "#EBB453"], reel: true, line: "The send-off. Sparklers, slow motion, everyone smiling." },
-    { title: "Behind the decks",   cat: "People",   exif: "24mm · f/1.4 · 1/80 · ISO 2500",   src: "", tint: ["#1E2A21", "#C24F2A"] }
+    { title: "Concrete & gold",  cat: "Portraits", src: "media/concrete.jpg", pos: "25% 50%", wide: true, reel: true, line: "Concrete, wood and a gold chain. Stillness." },
+    { title: "Mid-set",          cat: "Events",    src: "media/dj-set.jpg", pos: "50% 45%", reel: true, line: "Mid-set. The room's about to go up." },
+    { title: "Blue hour",        cat: "City",      src: "media/blue-hour.jpg", pos: "50% 30%", reel: true, line: "Blue hour. The skyline switching on." },
+    { title: "Pink hat, late set", cat: "Events",  src: "media/pink-hat.jpg", pos: "50% 35%" },
+    { title: "Brooklyn Bridge",  cat: "City",      src: "media/brooklyn-bridge.jpg", pos: "40% 65%", reel: true, line: "Brooklyn Bridge at noon." },
+    { title: "The dance floor",  cat: "Events",    src: "media/dance-floor.jpg", pos: "50% 30%" },
+    { title: "Gallery day",      cat: "Portraits", src: "media/gallery-day.jpg", pos: "50% 55%", wide: true, reel: true, line: "Gallery day. Old portraits, new ones." },
+    { title: "Reflections",      cat: "Portraits", src: "media/reflections.jpg", pos: "50% 40%" },
+    { title: "Hands on the decks", cat: "Events",  src: "media/decks.mp4", poster: "media/decks-poster.jpg", video: true, pos: "50% 50%" },
+    { title: "Friendly neighborhood", cat: "City", src: "media/spidey.jpg", pos: "50% 45%" }
   ]
 };
 /* ===================================================================== */
@@ -925,7 +932,8 @@ function frame(now) {
         if (live) k += ((wave[Math.floor((x / W) * 1023)] - 128) / 128) * .12;
         if (k <= .04) continue;
         const r = Math.min(gap * .48, k * gap * .55), mix = x / W;
-        g2.fillStyle = `rgba(${ca[0] * mix + cb[0] * (1 - mix) | 0},${ca[1] * mix + cb[1] * (1 - mix) | 0},${ca[2] * mix + cb[2] * (1 - mix) | 0},${Math.min(.85, .25 + k)})`;
+        const dim = CONFIG.djPhoto ? .5 : 1;
+        g2.fillStyle = `rgba(${ca[0] * mix + cb[0] * (1 - mix) | 0},${ca[1] * mix + cb[1] * (1 - mix) | 0},${ca[2] * mix + cb[2] * (1 - mix) | 0},${Math.min(.85, .25 + k) * dim})`;
         g2.beginPath(); g2.arc(x, y, r, 0, 6.283); g2.fill();
       }
     }
@@ -936,16 +944,20 @@ requestAnimationFrame(frame);
 if (reduced) setInterval(() => frame(performance.now()), 120);
 
 /* ---------- Photos ---------- */
-const ph = (p) => `<div class="ph" style="background:radial-gradient(120% 90% at 30% 20%, ${p.tint[0]}, ${p.tint[1]})"></div>`;
-const media = (p) => p.src ? `<img src="${p.src}" alt="${p.title}" loading="lazy">` : ph(p);
+const ph = (p) => `<div class="ph" style="background:radial-gradient(120% 90% at 30% 20%, ${(p.tint || ["#3B2A4A", "#FF6FB5"])[0]}, ${(p.tint || ["#3B2A4A", "#FF6FB5"])[1]})"></div>`;
+const media = (p, fit) => {
+  if (!p.src) return ph(p);
+  const st = `style="object-position:${p.pos || "50% 50%"}${fit ? ";object-fit:" + fit : ""}"`;
+  return p.video ? `<video src="${p.src}" poster="${p.poster || ""}" ${st} autoplay muted loop playsinline aria-label="${p.title}"></video>` : `<img src="${p.src}" alt="${p.title}" loading="lazy" ${st}>`;
+};
 const cats = ["All", ...new Set(CONFIG.photos.map((p) => p.cat))];
 let current = "All", visible = [];
 function renderGallery() {
   visible = CONFIG.photos.map((p, i) => ({ p, i })).filter(({ p }) => current === "All" || p.cat === current);
-  $("#gallery").innerHTML = visible.map(({ p, i }, k) => `<button class="shot${p.wide && current === "All" ? " wide" : ""}" data-i="${i}" style="--d:${k * 0.06}s" aria-label="Open photo: ${p.title}">${media(p)}<span class="frame-no">${String(i + 1).padStart(2, "0")}A</span><span class="cap"><b>${p.title}</b><span>${p.exif.split(" · ").slice(1, 3).join(" · ")}</span></span><span class="blind t"></span><span class="blind b"></span></button>`).join("");
+  $("#gallery").innerHTML = visible.map(({ p, i }, k) => `<button class="shot${p.wide && current === "All" ? " wide" : ""}" data-i="${i}" style="--d:${k * 0.06}s" aria-label="Open photo: ${p.title}">${media(p)}<span class="frame-no">${String(i + 1).padStart(2, "0")}A</span><span class="cap"><b>${p.title}</b><span>${p.cat}</span></span><span class="blind t"></span><span class="blind b"></span></button>`).join("");
   $("#r-count").textContent = String(visible.length).padStart(2, "0");
   const widths = [3, 5, 2, 4, 3, 2, 5, 3];
-  $("#tl-video").innerHTML = visible.map(({ p, i }) => `<button class="clip" type="button" data-i="${i}" style="flex:${widths[i % widths.length]};background:linear-gradient(90deg, ${p.tint[0]}, ${p.tint[1]})" aria-label="Open ${p.title}">${p.title}</button>`).join("");
+  $("#tl-video").innerHTML = visible.map(({ p, i }) => `<button class="clip" type="button" data-i="${i}" style="flex:${widths[i % widths.length]};background:${p.src ? `linear-gradient(rgba(0,0,0,.35),rgba(0,0,0,.35)), url(${p.video ? p.poster : p.src}) ${p.pos || "center"}/cover` : "#2A2440"}" aria-label="Open ${p.title}">${p.title}</button>`).join("");
   $("#tl-audio").innerHTML = '<span class="clip" style="flex:1"></span>';
   $("#af").classList.remove("show", "lock");
 }
@@ -957,15 +969,15 @@ function focusOn(shot) {
   const vf = $("#vf").getBoundingClientRect(), r = shot.getBoundingClientRect(), af = $("#af"), inset = Math.min(r.width, r.height) * .3;
   Object.assign(af.style, { left: (r.left - vf.left + inset) + "px", top: (r.top - vf.top + inset) + "px", width: (r.width - inset * 2) + "px", height: (r.height - inset * 2) + "px" });
   af.classList.add("show"); af.classList.remove("lock"); clearTimeout(lockTimer); lockTimer = setTimeout(() => af.classList.add("lock"), 260);
-  const ex = CONFIG.photos[shot.dataset.i].exif.split(" · ");
-  $("#r-f").textContent = ex[1]; $("#r-ss").textContent = ex[2]; $("#r-iso").textContent = ex[3].replace("ISO ", "");
+  const p = CONFIG.photos[shot.dataset.i];
+  $("#r-frame").textContent = String(+shot.dataset.i + 1).padStart(2, "0") + "A"; $("#r-cat").textContent = p.cat.toUpperCase(); $("#r-title").textContent = p.title;
 }
 $("#gallery").addEventListener("pointerover", (e) => { const s = e.target.closest(".shot"); if (s) focusOn(s); });
 $("#gallery").addEventListener("focusin", (e) => { const s = e.target.closest(".shot"); if (s) focusOn(s); });
 $("#vf").addEventListener("pointerleave", () => $("#af").classList.remove("show", "lock"));
 let lastFocus = null, lbIndex = 0;
 function openPhoto(i, from) { lastFocus = from || null; lbIndex = Math.max(0, visible.findIndex((v) => v.i === +i)); showLb(); $("#lightbox").hidden = false; $("#lb-close").focus(); }
-function showLb() { const p = visible[lbIndex].p; const fig = $("#lightbox figure"); fig.style.animation = "none"; fig.offsetHeight; fig.style.animation = ""; $("#lb-frame").innerHTML = media(p); $("#lb-title").textContent = p.title; $("#lb-exif").textContent = p.exif; }
+function showLb() { const p = visible[lbIndex].p; const fig = $("#lightbox figure"); fig.style.animation = "none"; fig.offsetHeight; fig.style.animation = ""; $("#lb-frame").innerHTML = media(p, "contain"); $("#lb-title").textContent = p.title; $("#lb-exif").textContent = p.cat; }
 function takeShot(shot) {
   focusOn(shot); shutterSound();
   if (reduced) return openPhoto(shot.dataset.i, shot);
@@ -1006,7 +1018,7 @@ const tcStart = performance.now();
 setInterval(() => { const f = Math.floor((performance.now() - tcStart) / (1000 / 24)), p = (n) => String(n).padStart(2, "0"); $("#tc").textContent = `00:${p(Math.floor(f / 1440) % 60)}:${p(Math.floor(f / 24) % 60)}:${p(f % 24)}`; }, 1000 / 24);
 
 /* ---------- About portrait (placeholder silhouette until a photo is added) ---------- */
-$("#portrait").innerHTML = CONFIG.portrait ? `<img src="${CONFIG.portrait}" alt="S1 Productions">` : `
+$("#portrait").innerHTML = CONFIG.portrait ? `<img src="${CONFIG.portrait}" alt="S1 Productions on the decks, wearing headphones">` : `
 <svg viewBox="0 0 400 500" aria-hidden="true">
   <defs>
     <linearGradient id="sil" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2B2550"/><stop offset="1" stop-color="#0D0B1C"/></linearGradient>
