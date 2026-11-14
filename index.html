@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Golden Hour Sets</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="DJ and photographer. Book a set, a shoot, or both.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gloock&family=Instrument+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one warm, sun-faded column. Big serif name, record + film frames, plenty of air. */
+:root {
+  --paper: #F2E9DA;      /* sun-faded paper */
+  --paper-2: #E8DCC6;    /* deeper paper for bands */
+  --ink: #1E2A21;        /* deep palm green, near black */
+  --ink-soft: #5B5E4E;   /* muted olive grey */
+  --sun: #D4602A;        /* sunset orange */
+  --gold: #E2A23A;       /* late-afternoon gold */
+  --line: rgba(30, 42, 33, .16);
+  --on-sun: #FFF7EC;
+  --display: "Gloock", "Georgia", "Times New Roman", serif;
+  --body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "DM Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --max: 1080px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #131A15; --paper-2: #1A231C; --ink: #F1E7D6; --ink-soft: #ABA894;
+    --sun: #EE8445; --gold: #E9B25A; --line: rgba(241, 231, 214, .14); --on-sun: #1A1208;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #131A15; --paper-2: #1A231C; --ink: #F1E7D6; --ink-soft: #ABA894;
+  --sun: #EE8445; --gold: #E9B25A; --line: rgba(241, 231, 214, .14); --on-sun: #1A1208;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--body); font-size: 17px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--sun); outline-offset: 3px; border-radius: 4px; }
+
+.wrap {
+  max-width: var(--max); margin: 0 auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+.label {
+  font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-soft);
+}
+h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1.02; text-wrap: balance; margin: 0; }
+h2 { font-size: clamp(36px, 6vw, 56px); }
+p { margin: 0; }
+
+/* ---------- Nav ---------- */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+.nav {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.nav .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 14px; }
+.brand { font-family: var(--display); font-size: 22px; text-decoration: none; white-space: nowrap; }
+.nav-links { display: flex; gap: 22px; align-items: center; font-size: 15px; }
+.nav-links a { text-decoration: none; color: var(--ink-soft); }
+.nav-links a:hover { color: var(--ink); }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 0 22px; border-radius: 999px;
+  font: 600 15px/1 var(--body); text-decoration: none; cursor: pointer;
+  border: 1.5px solid var(--ink); background: transparent; color: var(--ink);
+  transition: transform .15s ease, background .15s ease;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn.solid { background: var(--sun); border-color: var(--sun); color: var(--on-sun); }
+.btn.small { min-height: 40px; padding: 0 16px; font-size: 14px; }
+@media (max-width: 720px) { .nav-links a:not(.btn) { display: none; } }
+
+/* ---------- Hero ---------- */
+.hero .wrap { display: grid; grid-template-columns: 1.15fr .85fr; gap: 40px; align-items: center; padding-block: 56px 72px; }
+.hero h1 { font-size: clamp(56px, 11vw, 128px); letter-spacing: -.01em; }
+.hero h1 em { font-style: normal; color: var(--sun); }
+.hero .roles { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0 22px; }
+.chip { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+.hero .lede { font-size: clamp(18px, 2.2vw, 21px); max-width: 30ch; color: var(--ink-soft); }
+.hero .ctas { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
+
+.sun-record { position: relative; width: 100%; max-width: 420px; aspect-ratio: 1; margin-inline: auto; }
+.sun-record .sun {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, var(--gold) 0 38%, var(--sun) 72%, color-mix(in srgb, var(--sun) 70%, #000) 100%);
+}
+.sun-record .stripes { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; }
+.sun-record .stripes i { position: absolute; left: 0; right: 0; height: 4.5%; background: var(--paper); }
+.sun-record .disc {
+  position: absolute; width: 62%; aspect-ratio: 1; left: 19%; top: 19%; border-radius: 50%;
+  background: repeating-radial-gradient(circle, #151a16 0 2px, #222a23 2px 4px);
+  box-shadow: 0 18px 40px rgba(0,0,0,.28);
+  animation: spin 1.8s linear infinite; animation-play-state: paused;
+}
+.sun-record .disc::after {
+  content: ""; position: absolute; inset: 34%; border-radius: 50%;
+  background: radial-gradient(circle, #151a16 0 9%, var(--gold) 10% 100%);
+}
+.sun-record .tag { position: absolute; bottom: 4%; right: 0; background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 12px; letter-spacing: .1em; padding: 8px 12px; border-radius: 6px; }
+body.playing .sun-record .disc, body.playing .mini-disc { animation-play-state: running; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 820px) {
+  .hero .wrap { grid-template-columns: 1fr; padding-block: 36px 56px; gap: 36px; }
+  .sun-record { max-width: 300px; order: -1; }
+}
+
+/* ---------- Sections ---------- */
+section { scroll-margin-top: 72px; }
+.section { padding-block: 80px; }
+.band { background: var(--paper-2); }
+.head { display: flex; justify-content: space-between; align-items: end; gap: 24px; flex-wrap: wrap; margin-bottom: 36px; }
+.head p { max-width: 42ch; color: var(--ink-soft); }
+.head .label { display: block; margin-bottom: 12px; }
+
+/* ---------- Listen ---------- */
+.player {
+  display: grid; grid-template-columns: auto 1fr; gap: 28px; align-items: center;
+  background: var(--ink); color: var(--paper); border-radius: 22px; padding: 28px;
+}
+.mini-disc {
+  width: 120px; aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle, var(--gold) 0 16%, #151a16 17% 19%, transparent 20%), repeating-radial-gradient(circle, #0f1410 0 2px, #2a332b 2px 4px);
+  animation: spin 1.8s linear infinite; animation-play-state: paused;
+}
+.now { min-width: 0; }
+.now .label { color: color-mix(in srgb, var(--paper) 65%, transparent); }
+.now h3 { font-size: clamp(26px, 4vw, 36px); margin: 6px 0 4px; }
+.now .meta { font-family: var(--mono); font-size: 13px; color: color-mix(in srgb, var(--paper) 70%, transparent); }
+.controls { display: flex; align-items: center; gap: 16px; margin-top: 18px; }
+.play {
+  width: 56px; height: 56px; flex: none; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--sun); color: var(--on-sun); display: grid; place-items: center;
+}
+.play svg { width: 22px; height: 22px; fill: currentColor; }
+.bar { flex: 1; min-width: 0; }
+.track-line { height: 6px; border-radius: 6px; background: color-mix(in srgb, var(--paper) 22%, transparent); overflow: hidden; cursor: pointer; }
+.track-line span { display: block; height: 100%; width: 0; background: var(--gold); }
+.times { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; margin-top: 6px; color: color-mix(in srgb, var(--paper) 65%, transparent); font-variant-numeric: tabular-nums; }
+.note { margin-top: 14px; font-size: 14px; color: var(--gold); min-height: 1.4em; }
+.note a { color: var(--gold); }
+
+.mixes { list-style: none; margin: 18px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.mixes button {
+  width: 100%; display: grid; grid-template-columns: 34px 1fr auto auto; gap: 16px; align-items: center;
+  padding: 16px 4px; background: none; border: 0; border-bottom: 1px solid var(--line);
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.mixes button:hover .t { color: var(--sun); }
+.mixes .n, .mixes .bpm, .mixes .len { font-family: var(--mono); font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.mixes .t { font-weight: 600; transition: color .15s; }
+.mixes .t small { display: block; font-weight: 400; color: var(--ink-soft); font-size: 14px; }
+.mixes button[aria-current="true"] .t { color: var(--sun); }
+@media (max-width: 600px) {
+  .player { grid-template-columns: 1fr; text-align: left; padding: 22px; }
+  .mini-disc { width: 84px; }
+  .mixes button { grid-template-columns: 28px 1fr auto; }
+  .mixes .bpm { display: none; }
+}
+
+/* ---------- Photos ---------- */
+.filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.filters button {
+  font: 500 14px var(--body); padding: 9px 16px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; color: var(--ink);
+}
+.filters button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.shot {
+  position: relative; margin: 0; border: 0; padding: 0; cursor: zoom-in; text-align: left;
+  border-radius: 6px; overflow: hidden; background: var(--paper-2); color: #FFF7EC;
+  aspect-ratio: 4 / 5; max-width: 100%;
+}
+.shot.wide { grid-column: span 2; aspect-ratio: 8 / 5; }
+.shot img, .shot .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease; }
+.shot:hover img, .shot:hover .ph { transform: scale(1.03); }
+.shot .ph::after { /* film grain */
+  content: ""; position: absolute; inset: 0; opacity: .18; mix-blend-mode: overlay;
+  background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.5) 0 1px, transparent 1px 3px);
+}
+.shot .cap {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 30px 14px 12px;
+  background: linear-gradient(transparent, rgba(10,12,10,.62));
+  display: flex; justify-content: space-between; gap: 10px; align-items: end;
+}
+.shot .cap b { font-weight: 600; font-size: 15px; }
+.shot .cap span { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; opacity: .9; white-space: nowrap; }
+@media (max-width: 760px) {
+  .gallery { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .shot .cap span { display: none; }
+}
+.gallery-foot { margin-top: 22px; color: var(--ink-soft); font-size: 15px; }
+
+.lightbox { position: fixed; inset: 0; z-index: 20; background: rgba(8,10,8,.9); display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) max(20px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px)); }
+.lightbox figure { margin: 0; width: min(900px, 100%); }
+.lightbox .frame { position: relative; width: 100%; aspect-ratio: 3/2; max-height: 74vh; border-radius: 6px; overflow: hidden; }
+.lightbox .frame img, .lightbox .frame .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.lightbox figcaption { color: #F1E7D6; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; font-size: 15px; }
+.lightbox figcaption span { font-family: var(--mono); font-size: 12px; opacity: .8; }
+.lightbox .close { position: absolute; top: max(16px, env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); color: #F1E7D6; border-color: #F1E7D6; }
+
+/* ---------- About ---------- */
+.about .wrap { display: grid; grid-template-columns: .9fr 1.1fr; gap: 56px; align-items: start; }
+.portrait { position: relative; aspect-ratio: 4/5; border-radius: 200px 200px 8px 8px; overflow: hidden; background: var(--paper-2); max-width: 100%; }
+.portrait img, .portrait .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.about-text { display: grid; gap: 18px; max-width: 58ch; min-width: 0; }
+.about-text .big { font-family: var(--display); font-size: clamp(26px, 3.4vw, 34px); line-height: 1.2; }
+.about-text p:not(.big) { color: var(--ink-soft); }
+.sig { font-family: var(--display); font-size: 28px; color: var(--sun); }
+@media (max-width: 820px) { .about .wrap { grid-template-columns: 1fr; gap: 32px; } .portrait { max-width: 340px; } }
+
+/* ---------- Services ---------- */
+.services { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid var(--line); }
+.svc { padding: 28px 24px 28px 0; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.svc + .svc { padding-left: 24px; border-left: 1px solid var(--line); }
+.svc h3 { font-size: 30px; }
+.svc p { color: var(--ink-soft); }
+.svc ul { margin: 4px 0 0; padding-left: 18px; color: var(--ink-soft); font-size: 15px; }
+.svc.feature h3 { color: var(--sun); }
+@media (max-width: 820px) {
+  .services { grid-template-columns: 1fr; }
+  .svc, .svc + .svc { padding: 24px 0; border-left: 0; border-bottom: 1px solid var(--line); }
+}
+
+/* ---------- Book ---------- */
+.book { background: var(--sun); color: var(--on-sun); }
+.book .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; padding-block: 88px; }
+.book h2 { font-size: clamp(44px, 8vw, 84px); }
+.book .label { color: color-mix(in srgb, var(--on-sun) 80%, transparent); }
+.book .sub { margin-top: 18px; font-size: 19px; max-width: 34ch; }
+.reach { display: grid; gap: 12px; margin-top: 30px; }
+.reach .btn { border-color: var(--on-sun); color: var(--on-sun); justify-content: space-between; width: 100%; max-width: 380px; }
+.reach .btn.solid { background: var(--on-sun); color: var(--sun); }
+.copy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-family: var(--mono); font-size: 14px; }
+.copy-row button { font: 500 13px var(--body); background: none; border: 1px solid var(--on-sun); color: var(--on-sun); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+
+form { display: grid; gap: 14px; background: var(--paper); color: var(--ink); border-radius: 18px; padding: 26px; min-width: 0; }
+form .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+label { display: grid; gap: 6px; font-size: 14px; font-weight: 500; }
+input, select, textarea {
+  font: 16px var(--body); color: var(--ink); background: var(--paper-2);
+  border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; width: 100%; min-width: 0;
+}
+textarea { min-height: 96px; resize: vertical; }
+form .hint { font-size: 13px; color: var(--ink-soft); }
+form .done { font-size: 14px; color: var(--sun); font-weight: 600; min-height: 1.3em; }
+@media (max-width: 820px) { .book .wrap { grid-template-columns: 1fr; padding-block: 64px; } }
+@media (max-width: 480px) { form .row { grid-template-columns: 1fr; } form { padding: 20px; } }
+
+footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-block: 28px 36px; font-size: 14px; color: var(--ink-soft); }
+footer a { color: var(--ink-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<!--
+  ================================================================
+  EDIT ME: everything personal lives in the CONFIG block in the
+  <script> at the bottom (name, Instagram, email, mixes, photos).
+  ================================================================
+-->
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" data-fill="name">Your Name</a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#listen">Listen</a>
+      <a href="#photos">Photos</a>
+      <a href="#about">About</a>
+      <a class="btn solid small" href="#book">Book me</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <p class="label" data-fill="city">Based in Your City · Booking now</p>
+        <h1><span data-fill="first">Your</span><br><em data-fill="last">Name.</em></h1>
+        <div class="roles"><span class="chip">DJ</span><span class="chip">Photographer</span><span class="chip">Both at once</span></div>
+        <p class="lede">I play the records that keep a room easy, and I take the photos that make you remember it.</p>
+        <div class="ctas">
+          <a class="btn solid" href="#book">Book a date</a>
+          <a class="btn" href="#listen">Hear a mix</a>
+        </div>
+      </div>
+      <div class="sun-record" aria-hidden="true">
+        <div class="sun"></div>
+        <div class="stripes"><i style="top:58%"></i><i style="top:67%"></i><i style="top:76%"></i><i style="top:85%"></i></div>
+        <div class="disc"></div>
+        <div class="tag">33⅓ RPM · f/2.0</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="listen" class="section band" aria-labelledby="listen-h">
+    <div class="wrap">
+      <div class="head">
+        <div><span class="label">Listen</span><h2 id="listen-h">Press play, slow down.</h2></div>
+        <p>Soul, funk, R&amp;B and West Coast rap. Smooth enough for brunch, warm enough to get people dancing.</p>
+      </div>
+      <div class="player">
+        <div class="mini-disc" aria-hidden="true"></div>
+        <div class="now">
+          <span class="label">Now playing</span>
+          <h3 id="np-title">Mix title</h3>
+          <div class="meta" id="np-meta">—</div>
+          <div class="controls">
+            <button class="play" id="play" aria-label="Play">
+              <svg viewBox="0 0 24 24" id="play-icon"><path d="M7 4.5v15l13-7.5z"/></svg>
+            </button>
+            <div class="bar">
+              <div class="track-line" id="seek" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"><span id="progress"></span></div>
+              <div class="times"><span id="cur">0:00</span><span id="dur">0:00</span></div>
+            </div>
+          </div>
+          <p class="note" id="note" aria-live="polite"></p>
+        </div>
+      </div>
+      <ul class="mixes" id="mixes"></ul>
+      <audio id="audio" preload="none"></audio>
+    </div>
+  </section>
+
+  <section id="photos" class="section" aria-labelledby="photos-h">
+    <div class="wrap">
+      <div class="head">
+        <div><span class="label">Photos</span><h2 id="photos-h">The light I chase.</h2></div>
+        <div class="filters" id="filters" role="group" aria-label="Filter photos"></div>
+      </div>
+      <div class="gallery" id="gallery"></div>
+      <p class="gallery-foot">More on <a id="ig-more" href="#">Instagram</a>. Tap any photo to see it bigger.</p>
+    </div>
+  </section>
+
+  <section id="about" class="section band about" aria-labelledby="about-h">
+    <div class="wrap">
+      <div class="portrait" id="portrait"></div>
+      <div class="about-text">
+        <span class="label">About</span>
+        <h2 id="about-h" class="big">Hey, I'm <span data-fill="first">Your</span>. I care about how your night feels, and how you'll remember it.</h2>
+        <p>I started out digging through my family's old records and borrowing a camera I wasn't supposed to touch. Both turned into the same habit: paying attention. To what a crowd wants before they know it. To the second the light hits right.</p>
+        <p>When you book me, you get someone who shows up early, reads the room, and treats your event like it matters, because it does. No stiff poses, no generic playlists. Just good music, real moments, and photos you'll actually want to post.</p>
+        <p class="sig" data-fill="first">Your</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="svc-h">
+    <div class="wrap">
+      <div class="head">
+        <div><span class="label">What I do</span><h2 id="svc-h">Book the sound, the shots, or both.</h2></div>
+      </div>
+      <div class="services">
+        <div class="svc">
+          <span class="label">Sound</span>
+          <h3>DJ sets</h3>
+          <p>House parties, pop-ups, brand events, birthdays, rooftops.</p>
+          <ul><li>My own gear, or plug into yours</li><li>Custom vibe call before the date</li><li>Requests welcome, read the room always</li></ul>
+        </div>
+        <div class="svc">
+          <span class="label">Picture</span>
+          <h3>Photography</h3>
+          <p>Portraits, events, artists, small brands, cover art.</p>
+          <ul><li>Edited gallery in about a week</li><li>Natural light and film-look color</li><li>Sneak peeks within 48 hours</li></ul>
+        </div>
+        <div class="svc feature">
+          <span class="label">Sound + Picture</span>
+          <h3>The full day</h3>
+          <p>I spin the set and capture it. One person, one vibe, one invoice.</p>
+          <ul><li>Set plus event recap photos</li><li>A short clip for your socials</li><li>Best value for small events</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="book" class="book" aria-labelledby="book-h">
+    <div class="wrap">
+      <div>
+        <span class="label">Let's work</span>
+        <h2 id="book-h">Got a date? Let's talk.</h2>
+        <p class="sub">The quickest way to reach me is a DM. Tell me the date, the place, and the vibe, and I'll get back to you within a day.</p>
+        <div class="reach">
+          <a class="btn solid" id="ig-btn" href="#" target="_blank" rel="noopener">DM me on Instagram <span aria-hidden="true">→</span></a>
+          <a class="btn" id="mail-btn" href="#">Email me <span aria-hidden="true">→</span></a>
+          <div class="copy-row"><span id="email-text">you@gmail.com</span><button type="button" id="copy-email">Copy email</button><span id="copied" aria-live="polite"></span></div>
+        </div>
+      </div>
+      <form id="book-form" novalidate>
+        <div class="row">
+          <label for="f-name">Your name<input id="f-name" name="name" autocomplete="name" placeholder="Jordan"></label>
+          <label for="f-date">Date<input id="f-date" name="date" type="date"></label>
+        </div>
+        <label for="f-type">What do you need?
+          <select id="f-type" name="type">
+            <option>DJ set</option><option>Photography</option><option>Sound + Picture</option><option>Not sure yet</option>
+          </select>
+        </label>
+        <label for="f-msg">Tell me about it<textarea id="f-msg" name="msg" placeholder="Rooftop birthday, about 60 people, 7 to 11pm. Think golden hour soul."></textarea></label>
+        <button class="btn solid" type="submit">Write my email</button>
+        <p class="hint">This opens your email app with everything filled in. Nothing is sent until you hit send.</p>
+        <p class="done" id="form-done" aria-live="polite"></p>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© <span id="yr"></span> <span data-fill="name">Your Name</span>. DJ &amp; photographer.</span>
+    <span><a id="ig-foot" href="#" target="_blank" rel="noopener">Instagram</a> · <a id="mail-foot" href="#">Email</a></span>
+  </div>
+</footer>
+
+<div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Photo viewer">
+  <button class="btn small close" id="lb-close" type="button">Close</button>
+  <figure><div class="frame" id="lb-frame"></div><figcaption><b id="lb-title"></b><span id="lb-exif"></span></figcaption></figure>
+</div>
+
+<script>
+/* =====================================================================
+   CONFIG: change these and the whole site updates.
+   - photos: put image files next to this page (e.g. photos/1.jpg) and
+     set src. Leave src empty to keep the color placeholder.
+   - mixes: set src to an .mp3 file, OR set link to your SoundCloud /
+     Mixcloud page. Example entries below are placeholders.
+   ===================================================================== */
+const CONFIG = {
+  name: "Your Name",
+  city: "Your City",
+  instagram: "yourhandle",          // no @
+  email: "you@gmail.com",
+  portrait: "",                     // e.g. "photos/me.jpg"
+  mixes: [
+    { title: "Sunday Orange Juice", mood: "Soul & slow funk", bpm: "88–96", length: "42:10", src: "", link: "" },
+    { title: "Rooftop, 6:47pm",     mood: "R&B and West Coast", bpm: "92–100", length: "58:30", src: "", link: "" },
+    { title: "Late Checkout",       mood: "Disco edits & boogie", bpm: "112–120", length: "61:05", src: "", link: "" }
+  ],
+  photos: [
+    { title: "Golden hour portrait", cat: "Portraits", exif: "35mm · f/1.8 · 1/500 · ISO 100", src: "", tint: ["#E2A23A", "#B4452A"] },
+    { title: "Pop-up, Saturday",     cat: "Events",    exif: "28mm · f/2.8 · 1/125 · ISO 1600", src: "", tint: ["#2E4A3A", "#D4602A"], wide: true },
+    { title: "Corner store",         cat: "Street",    exif: "50mm · f/4 · 1/250 · ISO 200", src: "", tint: ["#7FA1A8", "#E8C88A"] },
+    { title: "Behind the decks",     cat: "Events",    exif: "35mm · f/2 · 1/60 · ISO 3200", src: "", tint: ["#1E2A21", "#C24F2A"] },
+    { title: "Artist cover shoot",   cat: "Portraits", exif: "85mm · f/2 · 1/320 · ISO 200", src: "", tint: ["#D9A57A", "#6B4A3A"] },
+    { title: "Palm shadows",         cat: "Street",    exif: "35mm · f/8 · 1/1000 · ISO 100", src: "", tint: ["#E9D7B2", "#4F6B4A"] },
+    { title: "Last song",            cat: "Events",    exif: "24mm · f/1.4 · 1/80 · ISO 2500", src: "", tint: ["#3B2A4A", "#E2A23A"], wide: true },
+    { title: "Sunday market",        cat: "Street",    exif: "50mm · f/5.6 · 1/400 · ISO 200", src: "", tint: ["#E07A3A", "#F0D9A8"] }
+  ]
+};
+/* ===================================================================== */
+
+const $ = (s) => document.querySelector(s);
+const parts = CONFIG.name.trim().split(/\s+/);
+const fills = { name: CONFIG.name, first: parts[0], last: (parts.slice(1).join(" ") || parts[0]) + ".", city: `Based in ${CONFIG.city} · Booking now` };
+document.querySelectorAll("[data-fill]").forEach((el) => { el.textContent = fills[el.dataset.fill]; });
+document.title = `${CONFIG.name} · DJ & Photographer`;
+$("#yr").textContent = new Date().getFullYear();
+
+// Contact links
+const ig = `https://instagram.com/${CONFIG.instagram}`;
+const igDM = `https://ig.me/m/${CONFIG.instagram}`;
+const mail = `mailto:${CONFIG.email}?subject=${encodeURIComponent("Booking inquiry")}`;
+$("#ig-btn").href = igDM; $("#ig-foot").href = ig; $("#ig-more").href = ig;
+$("#ig-more").textContent = `Instagram @${CONFIG.instagram}`;
+$("#mail-btn").href = mail; $("#mail-foot").href = mail;
+$("#email-text").textContent = CONFIG.email;
+$("#copy-email").addEventListener("click", () => {
+  const ok = () => { $("#copied").textContent = "Copied"; setTimeout(() => $("#copied").textContent = "", 1800); };
+  const fallback = () => { const r = document.createRange(); r.selectNodeContents($("#email-text")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("#copied").textContent = "Selected. Copy it from here."; };
+  try { navigator.clipboard.writeText(CONFIG.email).then(ok, fallback); } catch (e) { fallback(); }
+});
+
+// Placeholder "photo": a soft film-look gradient
+const ph = (p) => `<div class="ph" style="background:radial-gradient(120% 90% at 30% 20%, ${p.tint[0]}, ${p.tint[1]})"></div>`;
+const media = (p) => p.src ? `<img src="${p.src}" alt="${p.title}" loading="lazy">` : ph(p);
+if (CONFIG.portrait) $("#portrait").innerHTML = `<img src="${CONFIG.portrait}" alt="Portrait of ${CONFIG.name}">`;
+else $("#portrait").innerHTML = ph({ tint: ["#E2A23A", "#D4602A"] });
+
+// Gallery + filters
+const cats = ["All", ...new Set(CONFIG.photos.map((p) => p.cat))];
+let current = "All";
+function renderGallery() {
+  $("#gallery").innerHTML = CONFIG.photos
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => current === "All" || p.cat === current)
+    .map(({ p, i }) => `<button class="shot${p.wide && current === "All" ? " wide" : ""}" data-i="${i}" aria-label="Open photo: ${p.title}">${media(p)}<span class="cap"><b>${p.title}</b><span>${p.exif.split(" · ").slice(1, 3).join(" · ")}</span></span></button>`)
+    .join("");
+}
+$("#filters").innerHTML = cats.map((c) => `<button type="button" aria-pressed="${c === current}" data-c="${c}">${c}</button>`).join("");
+$("#filters").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  current = b.dataset.c;
+  document.querySelectorAll("#filters button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  renderGallery();
+});
+renderGallery();
+
+// Lightbox
+let lastFocus = null;
+$("#gallery").addEventListener("click", (e) => {
+  const b = e.target.closest(".shot"); if (!b) return;
+  const p = CONFIG.photos[b.dataset.i];
+  lastFocus = b;
+  $("#lb-frame").innerHTML = media(p); $("#lb-title").textContent = p.title; $("#lb-exif").textContent = p.exif;
+  $("#lightbox").hidden = false; $("#lb-close").focus();
+});
+const closeLb = () => { $("#lightbox").hidden = true; lastFocus && lastFocus.focus(); };
+$("#lb-close").addEventListener("click", closeLb);
+$("#lightbox").addEventListener("click", (e) => { if (e.target.id === "lightbox") closeLb(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#lightbox").hidden) closeLb(); });
+
+// Player
+const audio = $("#audio");
+let idx = 0;
+const fmt = (s) => { if (!isFinite(s)) return "0:00"; const m = Math.floor(s / 60); return `${m}:${String(Math.floor(s % 60)).padStart(2, "0")}`; };
+const ICON_PLAY = '<path d="M7 4.5v15l13-7.5z"/>', ICON_PAUSE = '<path d="M6 4h4.5v16H6zM13.5 4H18v16h-4.5z"/>';
+function setPlaying(on) {
+  document.body.classList.toggle("playing", on);
+  $("#play-icon").innerHTML = on ? ICON_PAUSE : ICON_PLAY;
+  $("#play").setAttribute("aria-label", on ? "Pause" : "Play");
+}
+function renderMixes() {
+  $("#mixes").innerHTML = CONFIG.mixes.map((m, i) => `<li><button type="button" data-i="${i}" aria-current="${i === idx}"><span class="n">${String(i + 1).padStart(2, "0")}</span><span class="t">${m.title}<small>${m.mood}</small></span><span class="bpm">${m.bpm} BPM</span><span class="len">${m.length}</span></button></li>`).join("");
+}
+function load(i) {
+  idx = i; const m = CONFIG.mixes[i];
+  $("#np-title").textContent = m.title;
+  $("#np-meta").textContent = `${m.mood} · ${m.bpm} BPM · ${m.length}`;
+  $("#dur").textContent = m.length; $("#cur").textContent = "0:00"; $("#progress").style.width = "0";
+  $("#note").innerHTML = "";
+  audio.pause(); setPlaying(false);
+  if (m.src) audio.src = m.src; else audio.removeAttribute("src");
+  renderMixes();
+}
+function play() {
+  const m = CONFIG.mixes[idx];
+  if (m.src) { audio.play().then(() => setPlaying(true)).catch(() => { $("#note").textContent = "This mix didn't load. Try another one."; }); return; }
+  if (m.link) { $("#note").innerHTML = `This one lives on <a href="${m.link}" target="_blank" rel="noopener">${new URL(m.link).hostname.replace("www.", "")}</a>. Tap to listen.`; return; }
+  $("#note").innerHTML = `Full mix dropping soon. Catch clips on <a href="${ig}" target="_blank" rel="noopener">Instagram</a>.`;
+}
+$("#play").addEventListener("click", () => audio.src && !audio.paused ? (audio.pause(), setPlaying(false)) : play());
+$("#mixes").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; load(+b.dataset.i); play(); });
+audio.addEventListener("timeupdate", () => {
+  const pct = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
+  $("#progress").style.width = pct + "%"; $("#seek").setAttribute("aria-valuenow", Math.round(pct));
+  $("#cur").textContent = fmt(audio.currentTime);
+});
+audio.addEventListener("loadedmetadata", () => $("#dur").textContent = fmt(audio.duration));
+audio.addEventListener("ended", () => { setPlaying(false); if (idx < CONFIG.mixes.length - 1) { load(idx + 1); play(); } });
+const seekTo = (pct) => { if (audio.duration) audio.currentTime = Math.max(0, Math.min(1, pct)) * audio.duration; };
+$("#seek").addEventListener("click", (e) => { const r = e.currentTarget.getBoundingClientRect(); seekTo((e.clientX - r.left) / r.width); });
+$("#seek").addEventListener("keydown", (e) => { if (!audio.duration) return; if (e.key === "ArrowRight") audio.currentTime += 10; if (e.key === "ArrowLeft") audio.currentTime -= 10; });
+load(0);
+
+// Booking form: builds an email the visitor sends themselves
+$("#book-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const name = (f.get("name") || "").trim();
+  if (!name) { $("#form-done").textContent = "Add your name so I know who I'm talking to."; $("#f-name").focus(); return; }
+  const body = `Hi ${parts[0]},\n\nI'm ${name}. I'm looking for: ${f.get("type")}.\nDate: ${f.get("date") || "TBD"}\n\n${f.get("msg") || ""}\n`;
+  location.href = `mailto:${CONFIG.email}?subject=${encodeURIComponent(`Booking: ${f.get("type")}${f.get("date") ? " on " + f.get("date") : ""}`)}&body=${encodeURIComponent(body)}`;
+  $("#form-done").textContent = `Your email app should open now. If it doesn't, send this to ${CONFIG.email}.`;
+});
+</script>
+</body>
+</html>
