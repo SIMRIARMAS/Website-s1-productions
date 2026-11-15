@@ -3,7 +3,7 @@ import { db, uid } from './db.js';
 import { toast } from './ui.js';
 
 export const SYSTEM_FOLDERS = {
-  exports: 'Exports', shared: 'Shared to app', voice: 'Voiceovers', frames: 'Frames',
+  refs: 'References', exports: 'Exports', shared: 'Shared to app', voice: 'Voiceovers', frames: 'Frames',
 };
 
 export function kindOf(file) {

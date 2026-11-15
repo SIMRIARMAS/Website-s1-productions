@@ -3,7 +3,7 @@ import { Engine, ASPECTS, TRANSITIONS, layout, totalDuration, clipDuration, audi
 import { PRESETS, ADJUST_KEYS, filterer, uniformsFor, analyzeFrame } from './gl.js';
 import { ic } from './icons.js';
 import { TOOL_WORDS, SETTINGS_WORDS, score, clipWorker, embedImage, embedText, dot, detectFaces, loadPeople, savePeople, assignPerson, frameCanvas, videoMoments, framesAt, meanVec, AI_INDEX_VERSION } from './search.js';
-import { askClaudeJSON, testKey, imageBlock, reelSchema, editSchema } from './claude.js';
+import { askClaudeJSON, testKey, imageBlock, reelSchema, editSchema, refSchema } from './claude.js';
 import { PORTRAIT_MODES, portraitActive, segKind, segmenterReady, segmenterInfo, loadSegmenter, upscale, cancelUpscale } from './ai.js';
 import { $, $$, h, fmtTime, fmtShort, fmtBytes, toast, openSheet, confirmSheet, promptSheet, slider, chips, swatches, section, btn, debounce } from './ui.js';
 import { importFiles, importBlob, pickFiles, saveToDevice, shareFiles, fileNameFor, storageInfo, finishPendingImports, canShareFiles } from './media.js';
@@ -85,6 +85,8 @@ async function route() {
   if (scr === 'library') return showLibrary();
   if (scr === 'settings') return showSettings();
   if (scr === 'create') return showCreate();
+  if (scr === 'refs') return showRefs();
+  if (scr === 'ref' && arg) return showRef(arg);
   return showHome();
 }
 window.addEventListener('hashchange', route);
@@ -1282,6 +1284,7 @@ async function exportFlow() {
       const paintWarn = () => {
         warn.innerHTML = '';
         if (d.max && engine.total > d.max) warn.append(h('p', { class: 'hint warn' }, `Your video is ${fmtShort(engine.total)} — ${d.name} allows up to ${fmtShort(d.max)}. Trim it, or it may be cut or split.`));
+        if (res > 1080 && ['reels', 'igpost', 'story', 'tiktok'].includes(d.id)) warn.append(h('p', { class: 'hint warn' }, `${d.name.split(' ')[0]} converts every upload to 1080p, so ${res >= 2160 ? '4K' : '2K'} won’t look sharper there — the extra shrinking can even soften it. 1080p ★ is the sharpest choice.`));
         if (res >= 2160) warn.append(h('p', { class: 'hint' }, '4K takes the most power and space. On older phones the export can stutter. If it does, use 2K.'));
       };
       const mark = r => r === rec.res ? ' ★' : '';
@@ -1322,24 +1325,47 @@ async function exportFlow() {
     if (last) settings(last); else pickDest();
   });
 }
+const PHOTO_DESTS = [
+  { id: 'orig', name: 'Full quality', sub: 'Original size & shape', aspect: null, short: null },
+  { id: 'igpost', name: 'Instagram post', sub: '4:5 · 1080×1350', aspect: '4:5', short: 1080, note: '4:5 shows biggest in the feed. Instagram shrinks anything over 1080 wide, so this is the sharpest size.' },
+  { id: 'igsquare', name: 'Instagram square', sub: '1:1 · 1080×1080', aspect: '1:1', short: 1080 },
+  { id: 'story', name: 'Story / Reel cover', sub: '9:16 · 1080×1920', aspect: '9:16', short: 1080, note: 'Keep text away from the very top and bottom — the app’s buttons cover them.' },
+  { id: 'ytthumb', name: 'YouTube thumbnail', sub: '16:9 · 1280×720', aspect: '16:9', short: 720, note: 'YouTube needs thumbnails under 2 MB — saved as JPG to stay small.', fmt: 'image/jpeg', maxBytes: 2e6 },
+  { id: 'print', name: 'Print / portfolio', sub: 'Full size · PNG', aspect: null, short: null, fmt: 'image/png' },
+];
 async function exportPhoto() {
   const p = S.project;
-  openSheet('Save photo', (b, close) => {
-    let fmt = 'image/jpeg';
-    const m = media.get(p.clips[0].mediaId);
-    const native = Math.min(4096, Math.min(m?.w || 2160, m?.h || 2160));
-    let res = native;
-    const cut = p.clips[0].ai?.mode === 'cutout';
-    if (cut) fmt = 'image/png';
-    b.append(section('Format', chips([{ id: 'image/jpeg', label: 'JPG' }, { id: 'image/png', label: cut ? 'PNG (transparent)' : 'PNG' }], fmt, v => { fmt = v; })),
-      section('Size', chips([{ id: native, label: `Full (${native}px)` }, { id: 1080, label: '1080px' }], res, v => { res = v; })),
-      btn('Save', 'download', async () => {
-        b.innerHTML = '<p class="hint center">Rendering…</p>';
-        const blob = await engine.exportImage(res, fmt, 0.95, cut && fmt === 'image/png');
-        const r = await importBlob(blob, `${p.name.replace(/[\\/:*?"<>|]/g, '-')}.${fmt === 'image/png' ? 'png' : 'jpg'}`, 'exports');
-        b.innerHTML = '';
-        showResult(b, r, close);
-      }, 'primary block'));
+  const m = media.get(p.clips[0].mediaId);
+  const native = Math.min(4096, Math.min(m?.w || 2160, m?.h || 2160));
+  const cut = p.clips[0].ai?.mode === 'cutout';
+  openSheet('Where’s this going?', (b, close) => {
+    const pick = () => {
+      b.innerHTML = '';
+      b.append(h('div', { class: 'dests' }, ...PHOTO_DESTS.map(d => h('button', { class: 'dest', onclick: () => opts(d) }, h('b', {}, d.name), h('small', {}, d.sub)))));
+    };
+    const opts = d => {
+      b.innerHTML = '';
+      let fmt = d.fmt || (cut ? 'image/png' : 'image/jpeg');
+      let switchAspect = !!d.aspect && p.aspect !== d.aspect;
+      const shapeName = a => a === 'orig' ? 'Original' : a;
+      b.append(h('button', { class: 'link-btn', onclick: pick }, '← Change destination'),
+        h('div', { class: 'rec-card' }, h('div', { class: 'rec-title', html: ic('wand') }, `Best for ${d.name}`), h('p', { class: 'hint' }, d.sub + (d.note ? ' — ' + d.note : ''))),
+        d.aspect && p.aspect !== d.aspect ? h('label', { class: 'switch-row' },
+          Object.assign(h('input', { type: 'checkbox' }), { checked: true, onchange: e => { switchAspect = e.target.checked; } }),
+          h('span', {}, `Crop the canvas to ${d.aspect} (right now it’s ${shapeName(p.aspect)}). You can move the photo inside the frame with Position.`)) : null,
+        d.fmt ? null : section('Format', chips([{ id: 'image/jpeg', label: 'JPG (smaller)' }, { id: 'image/png', label: cut ? 'PNG (transparent)' : 'PNG (best quality)' }], fmt, v => { fmt = v; })),
+        btn('Save', 'download', async () => {
+          if (switchAspect) commit(() => { p.aspect = d.aspect; });
+          b.innerHTML = '<p class="hint center">Rendering…</p>';
+          const short = d.short || native;
+          let blob = await engine.exportImage(short, fmt, 0.95, cut && fmt === 'image/png');
+          if (d.maxBytes && blob.size > d.maxBytes) blob = await engine.exportImage(short, 'image/jpeg', 0.82);
+          const r = await importBlob(blob, `${p.name.replace(/[\\/:*?"<>|]/g, '-')}${d.id === 'orig' ? '' : ' - ' + d.name}.${fmt === 'image/png' ? 'png' : 'jpg'}`, 'exports');
+          b.innerHTML = '';
+          showResult(b, r, close, d);
+        }, 'primary block'));
+    };
+    pick();
   });
 }
 function showResult(b, r, close, dest) {
@@ -1351,7 +1377,12 @@ function showResult(b, r, close, dest) {
     h('div', { class: 'row-btns' },
       btn('Share', 'share', () => shareFiles([r]), 'primary'),
       btn('Save to phone', 'download', () => saveToDevice(r.blob, fileNameFor(r)), 'ghost')),
-    canShareFiles() ? h('p', { class: 'hint center' }, dest && dest.id !== 'custom' ? `Tap Share, then pick ${dest.name.split(' ')[0]} — or Quick Share, Messages…` : 'Share opens your phone’s share sheet — Quick Share, Instagram, TikTok, Messages…') : null,
+    h('div', { class: 'save-help' },
+      h('p', {}, h('b', {}, 'Share'), ' — ', canShareFiles()
+        ? (dest && /youtube|shorts|reels|igpost|igsquare|story|tiktok|ytthumb/.test(dest.id) ? `pick ${dest.name.split(' ')[0]} to post it, or Quick Share, Messages, Google Drive, Google Photos…` : 'post to Instagram/TikTok/YouTube, or send with Quick Share, Messages, Google Drive, Google Photos…')
+        : 'not available in this browser — use Save.'),
+      h('p', {}, h('b', {}, 'Save to phone'), ' — ', /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'goes to your Downloads folder (then it shows in your Gallery/Files).' : 'choose the folder to save it in.'),
+      h('p', {}, h('b', {}, 'Library'), ' — it’s already kept in this app under Exports.')),
     btn('Done', null, () => { URL.revokeObjectURL(url); close(); }, 'ghost block')));
 }
 
@@ -1449,7 +1480,7 @@ async function moveTo(recs) {
     const go = async folder => { for (const m of recs) { m.folder = folder; await db.put('media', m); } close(); toast('Moved'); endSelect(); };
     b.append(h('div', { class: 'menu' },
       h('button', { html: ic('library') + 'Unsorted', onclick: () => go(null) }),
-      ...folders.map(f => h('button', { html: ic('folder') + f.name, onclick: () => go(f.id) })),
+      ...folders.map(f => h('button', { onclick: () => go(f.id) }, h('span', { html: ic('folder') }), f.name)),
       h('button', { html: ic('plus') + 'New folder…', onclick: async () => { close(); const f = await newFolder(); if (f) { for (const m of recs) { m.folder = f.id; await db.put('media', m); } endSelect(); } } })));
   });
 }
@@ -1605,7 +1636,7 @@ async function showSettings() {
     h('p', { class: 'hint' }, 'Your videos, photos and projects stay on this device — nothing is uploaded.'));
   if (info && !info.persisted && navigator.storage?.persist) st.append(btn('Keep my files safe from cleanup', 'check', async () => { const ok = await navigator.storage.persist(); toast(ok ? 'Storage protected' : 'Install the app to protect storage'); showSettings(); }, 'ghost'));
   body.append(st);
-  if (S.installPrompt) body.append(section('Install', btn('Add S1 Studio to home screen', 'download', async () => { S.installPrompt.prompt(); S.installPrompt = null; }, 'primary block')));
+  if (S.installPrompt) body.append(section('Install', btn('Add S1 Editor to home screen', 'download', async () => { S.installPrompt.prompt(); S.installPrompt = null; }, 'primary block')));
   body.scrollTop = keepScroll;
 }
 
@@ -1825,11 +1856,11 @@ function openSearch() {
         .filter(x => x.s >= 40).sort((a, z) => z.s - a.s || z.m.created - a.m.created).slice(0, 24);
       const audio = files.filter(x => x.m.kind === 'audio'), visual = files.filter(x => x.m.kind !== 'audio');
       if (audio.length) results.append(sec(inEditor ? 'Music & sounds — tap to add' : 'Audio', h('div', { class: 'menu' }, ...audio.map(({ m }) =>
-        h('button', { onclick: () => { close(); useMedia(m); }, html: ic('music') + m.name })))));
+        h('button', { onclick: () => { close(); useMedia(m); } }, h('span', { html: ic('music') }), m.name)))));
       if (visual.length) results.append(sec('Videos & photos by name — tap to pick', h('div', { class: 'grid pick' }, ...visual.map(({ m }) => hitTile(m)))));
       // Projects & settings
       const pr = projects.map(p => ({ p, s: score(q, p.name, 'project') })).filter(x => x.s >= 40);
-      if (pr.length) results.append(sec('Projects', h('div', { class: 'menu' }, ...pr.map(({ p }) => h('button', { onclick: () => { close(); go('#editor/' + p.id); }, html: ic(p.kind === 'photo' ? 'image' : 'video') + p.name })))));
+      if (pr.length) results.append(sec('Projects', h('div', { class: 'menu' }, ...pr.map(({ p }) => h('button', { onclick: () => { close(); go('#editor/' + p.id); }, }, h('span', { html: ic(p.kind === 'photo' ? 'image' : 'video') }), p.name)))));
       if (score(q, 'settings', SETTINGS_WORDS) >= 40) results.append(sec('Settings', h('div', { class: 'menu' },
         h('button', { onclick: () => { close(); go('#settings'); }, html: ic('palette') + 'Themes, colors & fonts' }),
         h('button', { onclick: () => { close(); toolbarSheet(); }, html: ic('arrange') + 'Customize toolbar' }))));
@@ -2115,7 +2146,7 @@ async function claudePlans(moments, o, onStatus) {
   const res = await askClaudeJSON({
     apiKey: S.prefs.claudeKey, effort: 'medium', content,
     system: [
-      'You are the editor inside S1 Studio, a phone video app for a DJ, photographer and content creator. You plan short-form social edits from the user’s own footage.',
+      'You are the editor inside S1 Editor, a phone video app for a DJ, photographer and content creator. You plan short-form social edits from the user’s own footage.',
       `Return exactly ${o.mode === 'cover' ? 3 : 3} variations that follow the brief and are clearly different from each other (pacing, look, order or opening shot).`,
       o.mode === 'cover'
         ? 'This is for COVER IMAGES (thumbnails/posters): each variation must have exactly one shot (the single best still for a cover) and bold text that would make someone tap. Set dur to 1.'
@@ -2257,7 +2288,7 @@ async function generate(results) {
   }
 }
 
-function showCreateResults(results, outs, o) {
+function showCreateResults(results, outs, o, again) {
   results.innerHTML = '';
   const save = async p => { p.updated = Date.now(); await db.put('projects', p); };
   const grid = h('div', { class: 'gen-grid' });
@@ -2279,7 +2310,7 @@ function showCreateResults(results, outs, o) {
           }, 'primary'))));
   }
   results.append(h('div', { class: 'psec-title' }, o.mode === 'cover' ? 'Your cover images' : 'Your videos — tap one to watch'), grid,
-    btn('Make 3 more', 'wand', () => generate(results), 'ghost block'));
+    btn('Make 3 more', 'wand', again || (() => generate(results)), 'ghost block'));
 }
 function previewCover(p) {
   openSheet(p.name, async b => {
@@ -2317,7 +2348,7 @@ function askClaudePanel() {
         const res = await askClaudeJSON({
           apiKey: S.prefs.claudeKey, effort: 'medium',
           system: [
-            'You are the editor inside S1 Studio, a phone video editor. The user describes a change; you return a short friendly reply and a list of edit operations.',
+            'You are the editor inside S1 Editor, a phone video editor. The user describes a change; you return a short friendly reply and a list of edit operations.',
             'Only use the operations and values in the schema. Indexes are 0-based. target -1 on a "clip" op means every clip; null means the clip under the playhead.',
             'Adjust values are -100..100 (sharpen, vignette, fade, grain 0..100). filterAmount 0..100. speed 0.1..4. volume 0..200. zoom 50..300. Times are seconds on the timeline, except trimStart/trimEnd which are seconds inside that clip’s source video.',
             'Leave every field you are not changing as null. If something can’t be done with these operations, say so in the reply and return no ops for it.',
@@ -2444,11 +2475,429 @@ function applyOps(ops) {
   }
 }
 
+// ---------------------------------------------------------------- References (learn from edits you like)
+async function loadRefs() { return (await db.get('settings', 'references'))?.list || []; }
+async function saveRefs(list) { await db.put('settings', { id: 'references', list }); }
+const ytId = u => (u.match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/) || [])[1];
+const platformOf = u => /instagram\.com/.test(u) ? 'Instagram' : /youtu/.test(u) ? 'YouTube' : /tiktok\.com/.test(u) ? 'TikTok' : 'Link';
+
+// Color "fingerprint" of a frame: exposure, contrast, saturation, warmth, tint, black/white points, vignette.
+function colorStats(canvas) {
+  const w = canvas.width, hh = canvas.height;
+  const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, hh).data;
+  const hist = new Uint32Array(256);
+  let n = 0, sl = 0, sl2 = 0, ss = 0, sr = 0, sg = 0, sb = 0, cl = 0, cn = 0, el = 0, en = 0;
+  for (let y = 0; y < hh; y += 2) for (let x = 0; x < w; x += 2) {
+    const i = (y * w + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2];
+    const l = 0.299 * r + 0.587 * g + 0.114 * b;
+    hist[l | 0]++; sl += l; sl2 += l * l; n++;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    ss += mx ? (mx - mn) / mx : 0; sr += r; sg += g; sb += b;
+    const dx = x / w - 0.5, dy = y / hh - 0.5, rr = dx * dx + dy * dy;
+    if (rr < 0.04) { cl += l; cn++; } else if (rr > 0.17) { el += l; en++; }
+  }
+  const pct = q => { let a = 0; for (let i = 0; i < 256; i++) { a += hist[i]; if (a >= n * q) return i; } return 255; };
+  const mean = sl / n;
+  return { mean, std: Math.sqrt(Math.max(0, sl2 / n - mean * mean)), sat: ss / n, warm: (sr - sb) / n, tint: (sg - (sr + sb) / 2) / n, lo: pct(0.03), hi: pct(0.97), vig: cn && en ? (el / en) / Math.max(1, cl / cn) : 1 };
+}
+function avgStats(list) {
+  const out = {};
+  for (const k of Object.keys(list[0])) out[k] = list.reduce((s, x) => s + x[k], 0) / list.length;
+  return out;
+}
+const NEUTRAL = { mean: 118, std: 58, sat: 0.32, warm: 8, tint: 2, lo: 8, hi: 245, vig: 0.92 };
+// Slider values that move `user` footage toward the `ref` look (calibrated to the Adjust shader).
+function matchLook(ref, user = NEUTRAL, k = 1) {
+  const c = (v, a, b) => Math.round(Math.max(a, Math.min(b, v * k)));
+  return {
+    brightness: c((ref.mean - user.mean) * 0.9, -60, 60),
+    contrast: c((ref.std / Math.max(1, user.std) - 1) * 100, -50, 60),
+    saturation: c((ref.sat / Math.max(0.02, user.sat) - 1) * 100, -100, 70),
+    warmth: c((ref.warm - user.warm) * 1.6, -60, 60),
+    tint: c((ref.tint - user.tint) * 3, -40, 40),
+    fade: c((Math.max(0, ref.lo - 6) - Math.max(0, user.lo - 6)) * 3.5, 0, 60),
+    vignette: c((user.vig - ref.vig) * 120, 0, 70),
+    highlights: c(Math.min(0, ref.hi - user.hi) * 0.8, -40, 0),
+    shadows: 0, sharpen: 15, grain: 0,
+  };
+}
+function describeLook(s) {
+  const bits = [];
+  bits.push(s.mean < 90 ? 'dark & moody' : s.mean > 150 ? 'bright & airy' : 'balanced exposure');
+  bits.push(s.std > 70 ? 'punchy contrast' : s.std < 45 ? 'soft, low contrast' : 'medium contrast');
+  bits.push(s.sat < 0.15 ? 'black & white / muted' : s.sat > 0.45 ? 'vivid color' : s.sat < 0.26 ? 'muted color' : 'natural color');
+  if (s.warm > 25) bits.push('warm tones'); else if (s.warm < -8) bits.push('cool / blue tones');
+  if (s.lo > 22) bits.push('faded blacks (film look)');
+  if (s.vig < 0.75) bits.push('dark corners (vignette)');
+  return bits.join(' · ');
+}
+
+const once2 = (el, ev, ms) => new Promise(r => { const t = setTimeout(() => r(false), ms); el.addEventListener(ev, () => { clearTimeout(t); r(true); }, { once: true }); });
+// Find every cut, the pacing, dips to black, the beat, the look, and a keyframe per shot.
+async function analyzeRef(m, onStep) {
+  if (m.kind === 'image') {
+    const cv = await frameCanvas(m, 512);
+    const stats = colorStats(cv);
+    return { kind: 'image', aspect: cv.width / cv.height, look: stats, lookText: describeLook(stats), keyframes: [{ t: 0, img: cv.toDataURL('image/jpeg', 0.75), stats }] };
+  }
+  const url = URL.createObjectURL(m.blob);
+  const v = document.createElement('video');
+  v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+  const res = { kind: 'video' };
+  try {
+    await once2(v, 'loadeddata', 10000);
+    const dur = isFinite(v.duration) && v.duration ? v.duration : (m.duration || 0);
+    res.duration = dur; res.aspect = v.videoWidth / v.videoHeight;
+    const step = Math.max(1 / 8, dur / 480);
+    const sw = 48, sh = Math.max(8, Math.round(48 / res.aspect));
+    const c = document.createElement('canvas'); c.width = sw; c.height = sh;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    let prev = null; const diffs = [], lumas = [], times = [];
+    for (let t = 0; t < dur; t += step) {
+      v.currentTime = t; await once2(v, 'seeked', 4000);
+      x.drawImage(v, 0, 0, sw, sh);
+      const d = x.getImageData(0, 0, sw, sh).data;
+      let lum = 0, diff = 0;
+      for (let i = 0; i < d.length; i += 4) { lum += d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; if (prev) diff += Math.abs(d[i] - prev[i]) + Math.abs(d[i + 1] - prev[i + 1]) + Math.abs(d[i + 2] - prev[i + 2]); }
+      lumas.push(lum / (sw * sh)); times.push(t); diffs.push(prev ? diff / (sw * sh * 3 * 255) : 0);
+      prev = d.slice();
+      onStep?.(Math.min(0.7, t / dur * 0.7));
+    }
+    const sorted = [...diffs].sort((a, b) => a - b), med = sorted[sorted.length >> 1] || 0;
+    const thr = Math.max(0.09, med * 3 + 0.05);
+    const cuts = [0], dips = [];
+    for (let i = 1; i < diffs.length; i++) {
+      if (diffs[i] > thr && diffs[i] >= (diffs[i - 1] || 0) && diffs[i] >= (diffs[i + 1] || 0) && times[i] - cuts[cuts.length - 1] > 0.25) cuts.push(+(times[i] - step / 2).toFixed(2));
+      if (lumas[i] < 14 && lumas[i - 1] >= 14) dips.push(+times[i].toFixed(2));
+    }
+    res.shots = cuts.map((s, i) => ({ start: s, end: i + 1 < cuts.length ? cuts[i + 1] : +dur.toFixed(2) })).filter(s => s.end - s.start > 0.05);
+    res.avgShot = dur / res.shots.length;
+    res.dips = dips;
+    // Keyframe in the middle of each shot (up to 24).
+    const pickShots = res.shots.length <= 24 ? res.shots : Array.from({ length: 24 }, (_, i) => res.shots[Math.floor(i * res.shots.length / 24)]);
+    res.keyframes = [];
+    await framesAt(m, pickShots.map(s => (s.start + s.end) / 2), (cv, t) => {
+      const stats = colorStats(cv);
+      res.keyframes.push({ t: +t.toFixed(2), img: cv.toDataURL('image/jpeg', 0.72), stats });
+      onStep?.(0.7 + 0.25 * res.keyframes.length / pickShots.length);
+    }, 320);
+    res.look = avgStats(res.keyframes.map(k => k.stats));
+    res.lookText = describeLook(res.look);
+    // Beat of the reference's own audio, and whether its cuts follow it.
+    try {
+      const buf = await new OfflineAudioContext(1, 44100, 44100).decodeAudioData(await m.blob.arrayBuffer());
+      if (buf.duration > 2) {
+        const a = analyzeMusic(buf);
+        res.bpm = a.bpm;
+        const beat = 60 / a.bpm;
+        const ints = res.shots.map(s => (s.end - s.start) / beat);
+        res.onBeat = ints.length ? ints.filter(q => Math.abs(q - Math.round(q)) < 0.2 && Math.round(q) >= 1).length / ints.length : 0;
+      }
+    } catch { }
+  } finally { v.removeAttribute('src'); v.load(); URL.revokeObjectURL(url); }
+  return res;
+}
+const nearestAspect = ar => ['9:16', '4:5', '1:1', '16:9', '3:4', '4:3'].map(id => { const [a, b] = id.split(':').map(Number); return { id, d: Math.abs(Math.log(ar / (a / b))) }; }).sort((x, y) => x.d - y.d)[0].id;
+
+async function showRefs() {
+  show('refs');
+  await loadMedia();
+  const refs = (await loadRefs()).sort((a, b) => b.created - a.created);
+  const body = $('#refsBody');
+  body.innerHTML = '';
+  const link = h('input', { class: 'field', type: 'url', placeholder: 'Paste an Instagram, TikTok or YouTube link…' });
+  const addLink = async () => {
+    const u = link.value.trim();
+    if (!/^https?:\/\//.test(u)) return toast('Paste a full link (starting with https://)');
+    const list = await loadRefs();
+    const r = { id: uid(), name: `${platformOf(u)} reference`, link: u, created: Date.now() };
+    list.push(r); await saveRefs(list);
+    go('#ref/' + r.id);
+  };
+  link.addEventListener('keydown', e => e.key === 'Enter' && addLink());
+  const upload = async (accept) => {
+    const files = await pickFiles(accept, false);
+    if (!files.length) return;
+    const [m] = await importFiles(files, 'refs');
+    if (!m) return;
+    media.set(m.id, m);
+    const list = await loadRefs();
+    const r = { id: uid(), name: m.name.replace(/\.[^.]+$/, ''), mediaId: m.id, created: Date.now() };
+    list.push(r); await saveRefs(list);
+    go('#ref/' + r.id);
+  };
+  body.append(section('Add something you like',
+    h('p', { class: 'hint' }, 'A video or photo edit you want to recreate: a screen recording, a saved video, a screenshot — or a link.'),
+    h('div', { class: 'big-actions' },
+      h('button', { class: 'big', onclick: () => upload('video/*') }, h('span', { html: ic('video') }), 'Video or screen recording', h('small', {}, 'Best for reels and edits — the AI can see every cut')),
+      h('button', { class: 'big', onclick: () => upload('image/*') }, h('span', { html: ic('image') }), 'Photo edit or screenshot', h('small', {}, 'Copy a color look or a cover/thumbnail style'))),
+    h('div', { class: 'link-row' }, link, btn('Add', 'plus', addLink, 'primary')),
+    h('p', { class: 'hint' }, 'Tip: on Instagram, tap Share → S1 Editor to save a link here in one tap (after installing the app).')));
+  if (refs.length) {
+    const grid = h('div', { class: 'gen-grid' });
+    for (const r of refs) {
+      const thumb = r.analysis?.keyframes?.[0]?.img || (r.mediaId && media.get(r.mediaId)?.thumb) || (r.link && ytId(r.link) ? `https://i.ytimg.com/vi/${ytId(r.link)}/hqdefault.jpg` : '');
+      grid.append(h('button', { class: 'gen-card ref-card', onclick: () => go('#ref/' + r.id) },
+        h('span', { class: 'gen-thumb' }, thumb ? h('img', { src: thumb, alt: '' }) : h('span', { class: 'tile-ic', html: ic('link') })),
+        h('b', {}, r.name),
+        h('small', {}, r.analysis ? (r.analysis.kind === 'video' ? `${r.analysis.shots.length} shots · ${fmtShort(r.analysis.duration)}${r.analysis.bpm ? ' · ' + r.analysis.bpm + ' BPM' : ''}` : r.analysis.lookText) : r.link ? platformOf(r.link) + ' link' : 'Not studied yet')));
+    }
+    body.append(section('Your references', grid));
+  }
+}
+
+async function showRef(id) {
+  show('ref');
+  await loadMedia();
+  const list = await loadRefs();
+  const r = list.find(x => x.id === id);
+  if (!r) return go('#refs');
+  const persist = async () => { const l = await loadRefs(); const i = l.findIndex(x => x.id === r.id); if (i >= 0) l[i] = r; else l.push(r); await saveRefs(l); };
+  $('#refTitle').textContent = r.name;
+  const body = $('#refBody');
+  body.innerHTML = '';
+  const m = r.mediaId ? media.get(r.mediaId) : null;
+  const top = h('div', { class: 'psec' });
+  if (m) {
+    const url = URL.createObjectURL(m.blob);
+    top.append(m.kind === 'video' ? h('video', { src: url, controls: true, playsinline: true, muted: true, class: 'result-media ref-media' }) : h('img', { src: url, class: 'result-media ref-media', alt: r.name }));
+  }
+  if (r.link) top.append(h('a', { class: 'btn ghost block', href: r.link, target: '_blank', rel: 'noopener', html: ic('link') + `Open on ${platformOf(r.link)}` }));
+  if (!m) top.append(h('div', { class: 'ai-banner' },
+    h('b', { html: ic('video') + 'Let the AI see it' }),
+    h('p', {}, `Apps can’t pull videos out of ${platformOf(r.link || '')}. Open it, screen-record it (swipe down → Screen recorder), then add the recording here.`),
+    btn('Add the screen recording', 'upload', async () => {
+      const files = await pickFiles('video/*,image/*', false);
+      if (!files.length) return;
+      const [mm] = await importFiles(files, 'refs');
+      if (!mm) return;
+      media.set(mm.id, mm); r.mediaId = mm.id; delete r.analysis; await persist(); showRef(r.id);
+    }, 'primary')));
+  const name = h('input', { class: 'field', value: r.name, maxlength: 60 });
+  name.addEventListener('change', async () => { r.name = name.value.trim() || r.name; $('#refTitle').textContent = r.name; await persist(); });
+  const note = h('textarea', { class: 'field', rows: 2, placeholder: 'What do you like about it? (the transitions, the color, the timing…)', value: r.note || '' });
+  note.addEventListener('change', async () => { r.note = note.value; await persist(); });
+  top.append(name, h('div', { class: 'with-mic' }, note, micButton(note)));
+  body.append(top);
+  if (!m) return;
+
+  const recipe = h('div');
+  body.append(recipe);
+  if (!r.analysis) {
+    const bar = h('div', { class: 'progress' }, h('div', { class: 'progress-bar' }));
+    recipe.append(h('div', { class: 'exporting' }, h('p', { class: 'hint center' }, 'Studying the edit — cuts, pacing, beat and color…'), bar));
+    try {
+      r.analysis = await analyzeRef(m, f => { bar.firstChild.style.width = Math.round(f * 100) + '%'; });
+      await persist();
+    } catch (e) { recipe.innerHTML = ''; recipe.append(h('p', { class: 'hint warn' }, 'Couldn’t read that file: ' + e.message)); return; }
+  }
+  const A = r.analysis;
+  recipe.innerHTML = '';
+  const strip = h('div', { class: 'keyframes' }, ...A.keyframes.map((k, i) => h('div', { class: 'kf' }, h('img', { src: k.img, alt: '' }), h('span', {}, A.kind === 'video' ? `${i + 1}` : ''))));
+  recipe.append(h('div', { class: 'rec-card' },
+    h('div', { class: 'rec-title', html: ic('wand') + 'What makes it work' }),
+    h('div', { class: 'rec-specs' },
+      A.kind === 'video' ? [
+        h('div', {}, h('small', {}, 'Length'), h('b', {}, fmtShort(A.duration))),
+        h('div', {}, h('small', {}, 'Shots'), h('b', {}, String(A.shots.length))),
+        h('div', {}, h('small', {}, 'Avg shot'), h('b', {}, A.avgShot.toFixed(1) + 's')),
+        A.bpm ? h('div', {}, h('small', {}, 'Beat'), h('b', {}, A.bpm + ' BPM')) : null,
+        A.bpm ? h('div', {}, h('small', {}, 'Cuts on beat'), h('b', {}, Math.round((A.onBeat || 0) * 100) + '%')) : null,
+      ] : null,
+      h('div', {}, h('small', {}, 'Shape'), h('b', {}, nearestAspect(A.aspect)))),
+    h('p', { class: 'hint' }, 'Look: ' + A.lookText),
+    A.kind === 'video' ? h('p', { class: 'hint' }, A.avgShot < 0.9 ? 'Pacing: very fast cuts — high energy.' : A.avgShot < 1.8 ? 'Pacing: quick cuts that keep it moving.' : A.avgShot < 3.5 ? 'Pacing: relaxed — each shot gets a moment.' : 'Pacing: slow and cinematic.') : null),
+    section(A.kind === 'video' ? 'Shot by shot' : '', strip));
+
+  // Your footage + actions
+  r.items = (r.items || []).filter(id => media.get(id));
+  const fstrip = h('div', { class: 'grid pick create-strip' });
+  const paintF = () => {
+    fstrip.innerHTML = '';
+    r.items.forEach((id, i) => { const t = mediaTile(media.get(id), () => { r.items.splice(i, 1); paintF(); persist(); }); t.append(h('span', { class: 'peek', html: ic('close') })); fstrip.append(t); });
+    fstrip.append(h('button', {
+      class: 'tile add-tile', html: ic('plus') + '<span>Add</span>', onclick: async () => {
+        const picked = await pickMedia({ kinds: A.kind === 'image' ? ['image'] : ['video', 'image'], title: 'Your footage to use' });
+        for (const x of picked) if (!r.items.includes(x.id)) r.items.push(x.id);
+        paintF(); persist();
+      },
+    }));
+  };
+  paintF();
+  const out = h('div', { class: 'create-results' });
+  const hasKey = !!S.prefs.claudeKey;
+  r.useClaude ??= true;
+  body.append(section('Your footage', h('p', { class: 'hint' }, A.kind === 'video' ? 'Add the clips you want to use — the AI matches each shot of the reference to your most similar moment.' : 'Add the photo(s) you want to give this look.'), fstrip),
+    hasKey ? chips([{ id: true, label: '🧠 Claude (understands the content)' }, { id: false, label: '⚡ On-device (instant, free)' }], r.useClaude, v => { r.useClaude = v; }) : null,
+    h('div', { class: 'row-btns' },
+      btn('Make it for me', 'wand', () => refMake(r, A, out, false), 'primary'),
+      btn('Show me how', 'info', () => refMake(r, A, out, true), 'ghost')),
+    out,
+    btn('Delete this reference', 'trash', async () => {
+      if (!(await confirmSheet('Delete this reference? (Your own footage isn’t touched.)', 'Delete', true))) return;
+      await saveRefs((await loadRefs()).filter(x => x.id !== r.id)); go('#refs');
+    }, 'ghost danger block'));
+}
+
+// Build edits that copy the reference (and/or a step-by-step guide).
+async function refMake(r, A, out, guideOnly) {
+  const items = r.items.map(id => media.get(id)).filter(Boolean);
+  if (!guideOnly && !items.length) return toast('Add some of your footage first');
+  out.innerHTML = '';
+  const status = h('p', { class: 'hint center gen-status' }, 'Working…');
+  const bar = h('div', { class: 'progress' }, h('div', { class: 'progress-bar' }));
+  out.append(h('div', { class: 'exporting' }, status, bar));
+  const setP = (f, msg) => { bar.firstChild.style.width = Math.round(f * 100) + '%'; if (msg) status.textContent = msg; };
+  const useClaude = !!S.prefs.claudeKey && r.useClaude;
+  try {
+    let moments = [];
+    if (items.length) {
+      let k = 0; const total = items.reduce((s, m) => s + (m.kind === 'video' ? 6 : 1), 0);
+      moments = await collectMoments(items, true, () => setP(0.05 + 0.35 * Math.min(1, ++k / total), 'Looking through your footage…'));
+      for (const mo of moments) if (mo.canvas) mo.stats = colorStats(mo.canvas);
+    }
+    const userLook = moments.length ? avgStats(moments.filter(m => m.stats).map(m => m.stats)) : NEUTRAL;
+    const look = matchLook(A.look, userLook);
+    const aspect = nearestAspect(A.aspect);
+    let guide = null, plans = [];
+    const byRef = new Map(moments.map(m => [m.ref, m]));
+
+    if (useClaude) {
+      setP(0.45, 'Claude is studying the reference…');
+      const content = [{ type: 'text', text: [
+        `REFERENCE (${A.kind}): "${r.name}"${r.link ? ' from ' + r.link : ''}. The user says: ${r.note || '(no note)'}`,
+        A.kind === 'video' ? `Measured: ${fmtShort(A.duration)} long, ${A.shots.length} shots, average shot ${A.avgShot.toFixed(2)}s, shot lengths: ${A.shots.slice(0, 40).map(s => (s.end - s.start).toFixed(2)).join(', ')}${A.bpm ? `, music ${A.bpm} BPM, ${Math.round((A.onBeat || 0) * 100)}% of cuts on the beat` : ''}${A.dips.length ? `, ${A.dips.length} dips to black` : ''}.` : '',
+        `Shape ${aspect}. Color look: ${A.lookText}. Matched slider values for the user's footage: ${JSON.stringify(look)}.`,
+        'Reference keyframes follow (R1, R2… in order).',
+      ].join('\n') }];
+      A.keyframes.forEach((kf, i) => { content.push({ type: 'text', text: `R${i + 1}${A.kind === 'video' ? ` at ${kf.t}s` : ''}` }); content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: kf.img.split(',')[1] } }); });
+      if (moments.length) {
+        content.push({ type: 'text', text: `USER FOOTAGE — ${moments.length} moments. Video refs are V<video>@<seconds>; photo refs are P<photo>.` });
+        for (const mo of moments) { content.push({ type: 'text', text: mo.t != null ? `${mo.ref} — "${mo.m.name}", moment at ${mo.t}s` : `${mo.ref} — photo "${mo.m.name}"` }); content.push(imageBlock(mo.canvas)); }
+      } else content.push({ type: 'text', text: 'The user hasn’t added footage yet — return an empty variations list and write the guide and shot list as instructions for what to film or pick.' });
+      const res = await askClaudeJSON({
+        apiKey: S.prefs.claudeKey, effort: 'medium', content,
+        system: [
+          'You are the editor inside S1 Editor, a phone video/photo editor for a DJ, photographer and content creator. The user shows you an edit they love and wants to recreate it with their own footage.',
+          'summary: 2–3 sentences on what makes the reference work (hook, pacing, transitions, text, color, mood). look: one sentence on the color grade.',
+          'steps: a clear numbered recipe for doing it by hand in this app, naming its tools exactly: Canvas, Background, Trim, Split, Speed, Filter, Adjust (Brightness, Contrast, Saturation, Warmth, Tint, Highlights, Shadows, Sharpen, Vignette, Fade, Grain), AI (portrait blur/cut-out), Text, Sticker, Music, Transition (button between clips), Motion, Export. Give concrete numbers (seconds, slider values, fonts). 6–10 steps.',
+          'shotList: one entry per reference keyframe (ref R1, R2…): describe what that shot shows and, in "use", which of the user’s moment refs fits best (or what to look for if none fit).',
+          'variations: if footage was given, 3 versions that follow the reference’s structure with the user’s moments — same pacing and order of shot types; variation 1 closest to the reference, the others looser. Only use given refs. Text: copy the reference’s on-screen text style; use the user’s note for wording if any.',
+          `filter: the closest preset to the reference look (the matched slider values will also be applied).`,
+        ].join('\n'),
+        schema: refSchema({ filters: PRESETS.map(p => p.id), transitions: TRANSITIONS.map(t => t.id), fonts: FONTS }),
+      });
+      guide = { summary: res.summary, look: res.look, steps: res.steps, shotList: res.shotList, filter: res.filter };
+      plans = res.variations || [];
+      plans.forEach(p => { p.filter = res.filter || p.filter; });
+    } else {
+      setP(0.5, 'Matching shots to your footage…');
+      guide = localGuide(A, look, aspect);
+      if (moments.length && A.kind === 'video') plans = await localRefPlans(A, moments);
+      else if (moments.length) plans = moments.slice(0, 3).map((mo, i) => ({ name: ['Look match', 'Look match B', 'Look match C'][i], why: 'Your photo with the reference’s color look.', shots: [{ ref: mo.ref, dur: 1 }], filter: 'none', transition: 'none', font: 'Montserrat', motion: 'none', texts: [], keepClipSound: true }));
+    }
+    if (guideOnly || !plans.length) { showGuide(out, guide, A, byRef, r); return; }
+
+    setP(0.8, 'Putting your versions together…');
+    const o = { mode: A.kind === 'image' ? 'cover' : 'reel', style: 'clean', desc: r.note || '', title: '', format: aspect, music: 'clip', length: A.duration || 15 };
+    const outs = [];
+    for (const plan of plans.slice(0, 3)) {
+      const p = await buildFromPlan(plan, byRef, o);
+      if (!p) continue;
+      p.name = '📌 ' + (plan.name || r.name);
+      for (const c of p.clips) {
+        // Color-match to the reference (softer when Claude also picked a preset).
+        c.adjust = useClaude && plan.filter !== 'none' ? Object.fromEntries(Object.entries(look).map(([k, v]) => [k, Math.round(v * 0.6)])) : { ...look };
+        c.filterAmount = useClaude ? 60 : 0;
+        if (!useClaude) c.filter = 'none';
+        if (A.dips?.length > 1) c.transition = { type: 'black', dur: 0.5 };
+      }
+      if (p.clips.length) p.clips[p.clips.length - 1].transition = { type: 'none', dur: 0.5 };
+      const cv = await renderProject(p, 360);
+      p.poster = cv.toDataURL('image/jpeg', 0.8); p.posterAR = cv.width / cv.height;
+      outs.push({ p, plan: { name: plan.name, why: plan.why } });
+    }
+    showCreateResults(out, outs, o, () => refMake(r, A, out, false));
+    out.append(btn('Show me how instead', 'info', () => showGuide(out, guide, A, byRef, r, true), 'ghost block'));
+  } catch (e) {
+    out.innerHTML = '';
+    out.append(h('p', { class: 'hint warn center' }, e.message || String(e)));
+  }
+}
+
+// On-device: same timing as the reference, each slot filled with your most similar moment.
+async function localRefPlans(A, moments) {
+  let sim;
+  if (S.prefs.aiSearch) {
+    try {
+      const refV = [];
+      for (const kf of A.keyframes) { const img = new Image(); img.src = kf.img; await img.decode(); const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; c.getContext('2d').drawImage(img, 0, 0); refV.push(await embedImage(c)); }
+      for (const mo of moments) mo.vec = await embedImage(mo.canvas);
+      sim = (i, mo) => dot(refV[i], mo.vec);
+    } catch { sim = null; }
+  }
+  if (!sim) {
+    // Fallback: compare color fingerprints (brightness, color, contrast).
+    sim = (i, mo) => { const a = A.keyframes[i].stats, b = mo.stats; return -(Math.abs(a.mean - b.mean) / 60 + Math.abs(a.sat - b.sat) * 3 + Math.abs(a.warm - b.warm) / 40 + Math.abs(a.std - b.std) / 40); };
+  }
+  const slots = A.shots.length <= 24 ? A.shots.map((s, i) => ({ dur: s.end - s.start, kf: i })) : A.shots.map((s, i) => ({ dur: s.end - s.start, kf: Math.min(23, Math.floor(i * 24 / A.shots.length)) }));
+  const fill = (rank) => {
+    const used = new Map(); let last = null;
+    return slots.map(sl => {
+      const ranked = moments.map(mo => ({ mo, s: sim(sl.kf, mo) - (used.get(mo.ref) || 0) * 0.08 })).filter(x => x.mo !== last).sort((a, z) => z.s - a.s);
+      const pick = (ranked[Math.min(rank, ranked.length - 1)] || ranked[0]).mo;
+      used.set(pick.ref, (used.get(pick.ref) || 0) + 1); last = pick;
+      return { ref: pick.ref, dur: Math.max(0.3, sl.dur) };
+    });
+  };
+  const chrono = slots.map((sl, i) => ({ ref: moments[Math.floor(i * moments.length / slots.length)].ref, dur: Math.max(0.3, sl.dur) }));
+  const base = { filter: 'none', transition: 'none', font: 'Montserrat', motion: 'none', texts: [], keepClipSound: true };
+  return [
+    { ...base, name: 'Closest match', why: 'Same cuts and timing as the reference, each shot matched to your most similar moment.', shots: fill(0) },
+    { ...base, name: 'Alternate picks', why: 'Same timing, using your next-best matching moments.', shots: fill(1) },
+    { ...base, name: 'Your story', why: 'The reference’s rhythm with your footage in the order it happened.', shots: chrono },
+  ];
+}
+
+function localGuide(A, look, aspect) {
+  const steps = [];
+  steps.push({ title: `Set the shape to ${aspect}`, detail: `Tap Canvas → ${aspect}. Then Fit/Fill → Fill so your clips cover the frame like the reference.` });
+  if (A.kind === 'video') {
+    steps.push({ title: `Plan about ${A.shots.length} shots`, detail: `The reference is ${fmtShort(A.duration)} long with ${A.shots.length} cuts — about ${A.avgShot.toFixed(1)}s per shot. Add your clips (the + at the end of the timeline). Use the shot-by-shot strip above to pick a similar moment for each.` });
+    steps.push({ title: 'Trim each clip to its moment', detail: `Select a clip → Trim, or put the playhead on the moment and use Split, then Delete the extra. Keep most shots around ${A.avgShot.toFixed(1)}s${A.avgShot < 1.2 ? ' — fast, punchy cuts' : ''}.` });
+    if (A.bpm) steps.push({ title: `Cut on the beat (${A.bpm} BPM)`, detail: `Add your song in Music. One beat is ${(60 / A.bpm).toFixed(2)}s, so make shots ${(60 / A.bpm).toFixed(2)}s, ${(120 / A.bpm).toFixed(2)}s or ${(240 / A.bpm).toFixed(2)}s long. ${Math.round((A.onBeat || 0) * 100)}% of the reference’s cuts land on the beat.` });
+    steps.push({ title: A.dips.length > 1 ? 'Transitions: dip to black' : 'Transitions: hard cuts', detail: A.dips.length > 1 ? 'Tap the small square between clips → Dip black, about 0.5s.' : 'Leave the squares between clips on None — the reference uses straight cuts, which feel faster.' });
+  }
+  const L = Object.entries(look).filter(([k, v]) => v && k !== 'sharpen');
+  steps.push({ title: 'Copy the color look', detail: `Look: ${A.lookText}. Open Adjust and set ${L.map(([k, v]) => `${k[0].toUpperCase() + k.slice(1)} ${v > 0 ? '+' : ''}${v}`).join(', ') || 'small tweaks only — it’s close to natural'}${A.kind === 'video' ? ', then tap “Apply to all clips”' : ''}.` });
+  steps.push({ title: 'Sharpen a touch', detail: 'Adjust → Sharpen 15–25, or ✨ Enhance first and then the look.' });
+  steps.push({ title: 'Export for where it’s going', detail: 'Tap Export, pick Instagram Reels / TikTok / YouTube and it sets the best size and quality.' });
+  return { summary: A.kind === 'video' ? `${A.shots.length} shots in ${fmtShort(A.duration)} (${A.avgShot.toFixed(1)}s each)${A.bpm ? `, cut to ${A.bpm} BPM` : ''}. ${A.lookText}.` : `Photo look: ${A.lookText}.`, look: A.lookText, steps, shotList: null };
+}
+
+function showGuide(out, guide, A, byRef, r, keep) {
+  if (!keep) out.innerHTML = '';
+  const list = h('ol', { class: 'guide' }, ...guide.steps.map(s => h('li', {}, h('b', {}, s.title), h('p', {}, s.detail))));
+  const shots = guide.shotList?.length ? h('div', { class: 'shotlist' }, ...guide.shotList.map(s => {
+    const i = parseInt((s.ref || '').slice(1), 10) - 1;
+    const kf = A.keyframes[i];
+    const use = byRef.get((s.use || '').trim());
+    return h('div', { class: 'shot-row' },
+      kf ? h('img', { src: kf.img, alt: '' }) : null,
+      h('div', {}, h('b', {}, s.ref), h('p', {}, s.describe), h('small', {}, use ? `Use: ${use.m.name}${use.t != null ? ' at ' + use.t + 's' : ''}` : s.use)),
+      use?.canvas ? h('img', { src: use.canvas.toDataURL('image/jpeg', 0.7), alt: '' }) : null);
+  })) : null;
+  out.append(h('div', { class: 'rec-card' }, h('div', { class: 'rec-title', html: ic('info') + 'How to make it' }), h('p', { class: 'hint' }, guide.summary)),
+    list, shots ? section('Shot list', shots) : null,
+    r.items?.length ? btn('Now make it for me', 'wand', () => refMake(r, A, out, false), 'primary block') : h('p', { class: 'hint center' }, 'Add your footage above and tap “Make it for me” to have it built for you.'));
+}
+
 // ---------------------------------------------------------------- wiring
 $('#newVideo').onclick = () => createProject('video');
 $('#newPhoto').onclick = () => createProject('photo');
 $('#openLibrary').onclick = () => go('#library');
 $('#openCreate').onclick = () => go('#create');
+$('#openRefs').onclick = () => go('#refs');
 $$('[data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
 $('#edBack').onclick = () => go('#home');
 $('#playBtn').onclick = () => engine.toggle();
@@ -2512,6 +2961,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sav
   await applyTheme();
   const params = new URLSearchParams(location.search);
   const shared = await finishPendingImports();
+  if (params.has('reflink')) { history.replaceState(null, '', location.pathname + '#refs'); toast('Saved to References'); }
   if (params.has('shared')) {
     history.replaceState(null, '', location.pathname + '#library');
     S.lib.folder = 'shared';

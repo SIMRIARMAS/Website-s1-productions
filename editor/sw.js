@@ -1,6 +1,6 @@
-// S1 Studio service worker: offline app shell + receiving files from the phone's share sheet.
-const CACHE = 's1studio-v5';
-const RUNTIME = 's1studio-ai';
+// S1 Editor service worker: offline app shell + receiving files from the phone's share sheet.
+const CACHE = 's1editor-v6';
+const RUNTIME = 's1editor-ai';
 const SHELL = ['./', './index.html', './styles.css', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png',
   './js/app.js', './js/engine.js', './js/gl.js', './js/db.js', './js/ui.js', './js/media.js', './js/icons.js', './js/ai.js', './js/upscale-worker.js', './js/search.js', './js/clip-worker.js', './js/claude.js'];
 
@@ -24,6 +24,27 @@ const kindOf = f => /^video\//.test(f.type) ? 'video' : /^image\//.test(f.type) 
 async function receiveShare(request) {
   const form = await request.formData();
   const files = form.getAll('media').filter(f => f && f.size && kindOf(f));
+  // A shared link (e.g. Instagram → Share → S1 Editor) becomes a reference.
+  if (!files.length) {
+    const text = `${form.get('url') || ''} ${form.get('text') || ''}`;
+    const link = (text.match(/https?:\/\/[^\s<>"']+/) || [])[0];
+    if (link) {
+      const db = await openDB();
+      await new Promise((res, rej) => {
+        const t = db.transaction('settings', 'readwrite');
+        const st = t.objectStore('settings');
+        const g = st.get('references');
+        g.onsuccess = () => {
+          const list = g.result?.list || [];
+          const host = /instagram/.test(link) ? 'Instagram' : /youtu/.test(link) ? 'YouTube' : /tiktok/.test(link) ? 'TikTok' : 'Link';
+          list.push({ id: 'r' + Date.now().toString(36), name: `${host} reference`, link, created: Date.now() });
+          st.put({ id: 'references', list });
+        };
+        t.oncomplete = res; t.onerror = () => rej(t.error);
+      });
+      return Response.redirect('./?reflink=1#refs', 303);
+    }
+  }
   const db = await openDB();
   await new Promise((res, rej) => {
     const t = db.transaction(['media', 'folders'], 'readwrite');

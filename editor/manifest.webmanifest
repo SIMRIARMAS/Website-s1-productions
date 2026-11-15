@@ -1,6 +1,6 @@
 {
-  "name": "S1 Studio",
-  "short_name": "S1 Studio",
+  "name": "S1 Editor",
+  "short_name": "S1 Editor",
   "description": "Edit videos and photos: trim, filters, auto enhance, text, music, export and share.",
   "id": "./",
   "start_url": "./",
@@ -22,6 +22,7 @@
     "params": {
       "title": "title",
       "text": "text",
+      "url": "url",
       "files": [{ "name": "media", "accept": ["video/*", "image/*", "audio/*"] }]
     }
   }

@@ -118,3 +118,16 @@ export function editSchema({ filters, transitions, fonts, aspects }) {
   });
   return obj({ reply: str, ops: { type: 'array', items: op } });
 }
+
+// Reference analysis: what makes a video/photo work, how to recreate it, and edits with the user's footage.
+export function refSchema({ filters, transitions, fonts }) {
+  const reel = reelSchema({ filters, transitions, fonts }).properties.variations;
+  return obj({
+    summary: str,
+    look: str,
+    steps: { type: 'array', items: obj({ title: str, detail: str }) },
+    shotList: { type: 'array', items: obj({ ref: str, describe: str, use: str }) },
+    filter: en(filters),
+    variations: reel,
+  });
+}

@@ -7,6 +7,6 @@ A website for a young photographer and DJ and influencer
 
 To personalize it, edit the `CONFIG` block near the bottom of `index.html` (name, city, Instagram handle, email, mixes, photos).
 
-## S1 Studio (video & photo editor)
+## S1 Editor (video & photo editor)
 
 `editor/` is a separate installable web app for editing videos and photos on your phone. See [`editor/README.md`](editor/README.md).

@@ -1,4 +1,4 @@
-# S1 Studio
+# S1 Editor
 
 A phone-first video and photo editor that runs in the browser and installs like an app (PWA). It's styled after InShot's layout, with a cleaner interface and a background you can customize.
 
@@ -24,8 +24,10 @@ Open `editor/` on any HTTPS host (GitHub Pages works), then use **Add to Home sc
 - **Look:** themes, your own photo, a solid color or a custom gradient for the background. You can also set the accent color, text color, app font, and panel color and transparency, and save the result as your own theme.
 - **✨ Create:** give it clips and photos and describe what you want, by typing or by voice. It returns 3 different short videos, or 3 cover images, that you can preview, edit or export. With a song, cuts land on the beat and the music starts at its most energetic part. It works on the phone, and with a Claude API key Claude looks at your footage and plans the edits.
 - **Ask Claude (editor tool):** describe a change ("darker and moody", "add SATURDAY NIGHT at the start", "cut it to 15 seconds") and Claude edits the project. Every change can be undone. This needs your own Claude API key (Settings → Claude AI). The key is stored only on the device, and calls go straight to Anthropic using Claude Opus 5.5.
+- **📌 References:** add a video or photo edit you like: a screen recording, a saved video, a screenshot, or a link shared from Instagram/YouTube/TikTok. The app finds every cut, the pacing, the music's BPM and how many cuts land on the beat, and the color look. **Make it for me** rebuilds the edit from your footage, with the same timing, each shot matched to your most similar moment, and the color matched. **Show me how** gives step-by-step directions with exact slider values and a shot list. With Claude connected, Claude also understands what each shot shows. Links can't be downloaded from those platforms, so the app asks for a screen recording.
+- **Saving:** photos and videos ask where they're going and pick the right crop and size. Instagram, TikTok and Stories export at 1080p, since those apps convert uploads to 1080p anyway. YouTube gets up to 4K, YouTube thumbnails are capped under 2 MB, and print exports a full-size PNG. Results can be shared (Instagram, TikTok, Quick Share, Drive, Photos…), saved to the phone, and are always kept in the Library.
 - **Library (file manager):** folders, filters by type, multi-select, share, save, move, rename and delete. Exports, voiceovers and saved frames are sorted into their own folders automatically.
-- **Share into the app:** once it's installed, S1 Studio shows up in the Android share sheet, so you can share a video from your gallery straight into it.
+- **Share into the app:** once it's installed, S1 Editor shows up in the Android share sheet, so you can share a video from your gallery straight into it.
 - **Theme:** 8 background themes, your own photo (with a darkness slider) or a solid color, an accent color, and frosted or solid panels.
 
 Everything is stored on the device in IndexedDB. Nothing is uploaded.
@@ -42,6 +44,20 @@ Everything is stored on the device in IndexedDB. Nothing is uploaded.
 - `js/claude.js`: Claude API connection (official Anthropic SDK) and edit/plan schemas
 - `js/db.js`: IndexedDB storage
 - `sw.js`, `manifest.webmanifest`: offline support, install and share target
+
+## Security & privacy
+
+- **Local-first:** everything (media, projects, AI data, settings) stays in the browser's storage on the device. There are no accounts, no server and no tracking. If you publish the app, each person who installs it has their own private copy.
+- **Claude:** each user brings their own Claude API key, stored only on their device, and requests go straight to Anthropic. The key is never put in exports or shared files.
+- **Content Security Policy:** the page may only run code from itself and the pinned library CDN (jsDelivr), and may only contact the AI model hosts and the Anthropic API.
+- **User text is never inserted as HTML:** file names, project names, notes, links and AI replies are always added as plain text. Links are limited to http(s).
+- **AI output is checked before it's applied:** Claude returns JSON that must match a schema. Every value is clamped or limited to a fixed list before it touches a project, and every change can be undone.
+
+## Publishing later
+
+- Host `editor/` on any HTTPS host. GitHub Pages works.
+- To list it in the Google Play Store, wrap it as a Trusted Web Activity with PWABuilder or Bubblewrap. That also needs a privacy policy stating the points above.
+- Before a wide release, add an in-app note about Claude API costs, test on a few low-end phones (real-time 4K export needs a recent phone), and consider moving the CDN libraries into the app itself so everything works offline from first launch.
 
 ## Known limits
 
