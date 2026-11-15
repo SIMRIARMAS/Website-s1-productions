@@ -79,7 +79,7 @@ function show(id) {
 }
 async function route() {
   const [scr, arg] = location.hash.slice(1).split('/');
-  if (scr !== 'editor' && S.project) closeEditor();
+  if (scr !== 'editor' && S.project) await closeEditor();
   if (scr === 'editor' && arg) return openEditor(arg);
   if (scr === 'library') return showLibrary();
   if (scr === 'settings') return showSettings();
@@ -104,19 +104,72 @@ async function showHome() {
   for (const p of list) {
     const first = p.clips[0];
     const dur = totalDuration(p);
+    const img = p.poster || (first ? thumbOf(first.mediaId) : '');
     grid.append(h('div', { class: 'proj' },
-      h('button', { class: 'proj-thumb', style: { backgroundImage: first ? `url(${thumbOf(first.mediaId)})` : '' }, onclick: () => go('#editor/' + p.id), 'aria-label': 'Open ' + p.name },
+      h('button', { class: 'proj-thumb', onclick: () => go('#editor/' + p.id), 'aria-label': 'Open ' + p.name },
+        img ? h('span', { class: 'proj-blur', style: { backgroundImage: `url(${img})` } }) : null,
+        img ? h('img', { class: 'proj-poster', src: img, alt: '' }) : null,
         h('span', { class: 'proj-kind', html: ic(p.kind === 'photo' ? 'image' : 'video') }),
         p.kind !== 'photo' ? h('span', { class: 'badge' }, fmtShort(dur)) : null),
+      p.clips.length ? h('button', { class: 'proj-play', 'aria-label': 'Preview ' + p.name, html: ic('play'), onclick: () => previewProject(p) }) : null,
       h('div', { class: 'proj-meta' },
         h('div', {}, h('div', { class: 'proj-name' }, p.name), h('div', { class: 'proj-date' }, new Date(p.updated).toLocaleDateString())),
         h('button', { class: 'icon-btn sm', 'aria-label': 'Project options', html: ic('more'), onclick: () => projectMenu(p) }))));
   }
 }
 
+// Watch a project from the main menu without opening the editor.
+let previewEngine = null;
+function previewProject(p) {
+  previewEngine ||= new Engine(document.createElement('canvas'), $('#hidden-media'));
+  const pe = previewEngine;
+  openSheet(p.name, async (b, close) => {
+    const cv = pe.canvas;
+    cv.className = 'preview-canvas';
+    const stage = h('div', { class: 'preview-stage' }, cv);
+    const playB = h('button', { class: 'play', 'aria-label': 'Play', html: ic('play'), onclick: () => pe.toggle() });
+    const time = h('span', { class: 'tc' });
+    const bar = h('input', { type: 'range', min: 0, max: 1000, value: 0, class: 'preview-bar', 'aria-label': 'Position' });
+    const isVideo = p.kind !== 'photo';
+    b.append(stage,
+      isVideo ? h('div', { class: 'preview-controls' }, playB, bar, time) : null,
+      h('div', { class: 'row-btns' },
+        btn('Edit', 'edit', () => { close(); go('#editor/' + p.id); }, 'ghost'),
+        btn(isVideo ? 'Export' : 'Save', 'download', () => { close(); S.exportAfterOpen = true; go('#editor/' + p.id); }, 'primary')));
+    await pe.load(structuredClone(p));
+    const fit = () => {
+      const ar = pe.aspect();
+      const maxW = stage.clientWidth || 320, maxH = Math.min(window.innerHeight * 0.58, 560);
+      let w = maxW, hh = w / ar;
+      if (hh > maxH) { hh = maxH; w = hh * ar; }
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      cv.style.width = w + 'px'; cv.style.height = hh + 'px';
+      cv.width = Math.round(w * dpr); cv.height = Math.round(hh * dpr);
+      pe.requestRender();
+    };
+    fit();
+    const paint = t => {
+      time.textContent = `${fmtTime(t)} / ${fmtTime(pe.total)}`;
+      bar.value = pe.total ? Math.round(t / pe.total * 1000) : 0;
+      const pct = bar.value / 10;
+      bar.style.setProperty('--a', '0%'); bar.style.setProperty('--b', pct + '%');
+    };
+    pe.onTime = paint;
+    pe.onPlayState = on => { playB.innerHTML = ic(on ? 'pause' : 'play'); playB.setAttribute('aria-label', on ? 'Pause' : 'Play'); };
+    bar.addEventListener('input', () => { pe.seek(bar.value / 1000 * pe.total); paint(pe.t); });
+    cv.addEventListener('click', () => isVideo && pe.toggle());
+    paint(0);
+    if (isVideo) { await pe.waitReady(0, 1500); pe.play(); }
+  }, {
+    wide: true,
+    onClose: () => { pe.pause(); pe.onTime = null; pe.onPlayState = null; pe.load({ clips: [], texts: [], audio: [] }); },
+  });
+}
+
 function projectMenu(p) {
   openSheet(p.name, (b, close) => {
     b.append(h('div', { class: 'menu' },
+      p.clips.length ? h('button', { onclick: () => { close(); previewProject(p); }, html: ic('play') + 'Preview' }) : null,
       h('button', { onclick: async () => { close(); const n = await promptSheet('Rename project', p.name); if (n) { p.name = n; await db.put('projects', p); showHome(); } }, html: ic('edit') + 'Rename' }),
       h('button', { onclick: async () => { close(); const c = structuredClone(p); c.id = uid(); c.name = p.name + ' copy'; c.updated = Date.now(); await db.put('projects', c); showHome(); }, html: ic('copy') + 'Duplicate' }),
       h('button', { class: 'danger', onclick: async () => { close(); if (await confirmSheet(`Delete “${p.name}”? Your media stays in the Library.`, 'Delete', true)) { await db.del('projects', p.id); showHome(); } }, html: ic('trash') + 'Delete' })));
@@ -224,8 +277,26 @@ async function openEditor(id) {
   updateTime();
   updateUndo();
   $('#exportBtn').textContent = p.kind === 'photo' ? 'Save' : 'Export';
+  if (S.exportAfterOpen) { S.exportAfterOpen = false; setTimeout(exportFlow, 300); }
 }
-function closeEditor() {
+// A small rendered frame of the edit (filters, text, canvas shape) for the project card.
+async function makePoster() {
+  const p = S.project;
+  if (!p?.clips.length) { if (p) { p.poster = null; } return; }
+  try {
+    const t = p.kind === 'photo' ? 0 : Math.min(engine.total * 0.3, 2);
+    engine.seek(t);
+    await engine.waitReady(t, 1500);
+    const { W, H } = engine.outputSize(320);
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    engine.renderFrame(c.getContext('2d'), W, H, t, false);
+    p.poster = c.toDataURL('image/jpeg', 0.78);
+    p.posterAR = W / H;
+  } catch { }
+}
+async function closeEditor() {
+  engine.pause();
+  await makePoster();
   saveProject.flush();
   engine.pause();
   engine.load({ clips: [], texts: [], audio: [] });
