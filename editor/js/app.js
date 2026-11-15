@@ -89,7 +89,7 @@ window.addEventListener('hashchange', route);
 const go = hash => { if (location.hash === hash) route(); else location.hash = hash; };
 
 async function loadMedia() {
-  media = new Map((await db.all('media')).map(m => [m.id, m]));
+  media = new Map((await db.all('media')).filter(m => !m.pendingShare).map(m => [m.id, m]));
 }
 const thumbOf = id => media.get(id)?.thumb || '';
 
@@ -1910,6 +1910,30 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S.inst
 window.addEventListener('pagehide', () => saveProject.flush());
 document.addEventListener('visibilitychange', () => { if (document.hidden) { saveProject.flush(); if (!engine.exportTarget) engine.pause(); } });
 
+// ---------------------------------------------------------------- shared files
+// Files shared into the app wait for your OK, because any website can try to send files here,
+// not just your phone's share sheet. Keep adds them; Discard deletes them; closing the sheet asks again next time.
+async function reviewSharedFiles() {
+  const waiting = (await db.all('media')).filter(m => m.pendingShare);
+  if (!waiting.length) return 0;
+  const n = waiting.length;
+  const names = waiting.slice(0, 3).map(m => m.name).join(', ') + (n > 3 ? ` and ${n - 3} more` : '');
+  const size = fmtBytes(waiting.reduce((t, m) => t + (m.size || 0), 0));
+  const choice = await new Promise(res => {
+    let answered = false;
+    openSheet('Shared files', (b, close) => {
+      b.append(h('p', { class: 'sheet-msg' }, `${n} file${n > 1 ? 's were' : ' was'} shared into S1 Studio (${size}): `, h('b', {}, names), '.'),
+        h('p', { class: 'hint' }, 'Only keep files you shared yourself.'),
+        h('div', { class: 'row-btns' },
+          h('button', { class: 'btn ghost', onclick: () => { answered = true; res('discard'); close(); } }, 'Discard'),
+          h('button', { class: 'btn primary', onclick: () => { answered = true; res('keep'); close(); } }, 'Keep')));
+    }, { onClose: () => { if (!answered) res('later'); } });
+  });
+  if (choice === 'keep') { for (const m of waiting) { delete m.pendingShare; await db.put('media', m); } return n; }
+  if (choice === 'discard') { for (const m of waiting) await db.del('media', m.id); toast(`Discarded ${n} shared file${n > 1 ? 's' : ''}`); }
+  return 0;
+}
+
 // ---------------------------------------------------------------- boot
 (async function boot() {
   S.prefs = { ...DEFAULT_PREFS, ...(await db.get('settings', 'prefs') || {}) };
@@ -1922,12 +1946,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sav
   }
   await applyTheme();
   const params = new URLSearchParams(location.search);
+  if (params.has('shared')) history.replaceState(null, '', location.pathname + '#library');
+  const kept = await reviewSharedFiles();
   const shared = await finishPendingImports();
-  if (params.has('shared')) {
-    history.replaceState(null, '', location.pathname + '#library');
-    S.lib.folder = 'shared';
-    toast(`${params.get('shared') || shared} file(s) received`);
-  }
+  if (kept) { S.lib.folder = 'shared'; toast(`${kept} file${kept > 1 ? 's' : ''} added to your Library`); }
+  else if (shared && params.has('shared')) S.lib.folder = 'shared';
   route();
   if (S.prefs.aiSearch) setTimeout(runIndexer, 4000);
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
