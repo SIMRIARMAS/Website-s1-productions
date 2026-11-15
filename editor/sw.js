@@ -1,5 +1,5 @@
 // S1 Editor service worker: offline app shell + receiving files from the phone's share sheet.
-const CACHE = 's1editor-v7';
+const CACHE = 's1editor-v8';
 const RUNTIME = 's1editor-ai';
 const SHELL = ['./', './index.html', './styles.css', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png',
   './js/app.js', './js/engine.js', './js/gl.js', './js/db.js', './js/ui.js', './js/media.js', './js/icons.js', './js/ai.js', './js/upscale-worker.js', './js/search.js', './js/clip-worker.js', './js/claude.js'];

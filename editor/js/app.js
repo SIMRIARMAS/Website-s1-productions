@@ -83,7 +83,7 @@ async function route() {
   if (scr !== 'editor' && S.project) await closeEditor();
   if (scr === 'editor' && arg) return openEditor(arg);
   if (scr === 'library') return showLibrary();
-  if (scr === 'settings') return showSettings();
+  if (scr === 'settings') return showSettings(arg);
   if (scr === 'create') return showCreate();
   if (scr === 'refs') return showRefs();
   if (scr === 'ref' && arg) return showRef(arg);
@@ -1531,7 +1531,7 @@ function viewMedia(m) {
 }
 
 // ---------------------------------------------------------------- settings
-async function showSettings() {
+async function showSettings(jump) {
   show('settings');
   const p = S.prefs;
   const body = $('#settingsBody');
@@ -1634,10 +1634,18 @@ async function showSettings() {
   const st = section('Storage',
     h('p', { class: 'hint' }, info ? `${fmtBytes(info.used)} used of ${fmtBytes(info.quota)} available to the app.` : 'Storage info unavailable.'),
     h('p', { class: 'hint' }, 'Your videos, photos and projects stay on this device — nothing is uploaded.'));
+  if (info?.persisted) st.append(h('p', { class: 'hint ok' }, '✓ Your files are protected — the phone won’t clear them to free up space.'));
   if (info && !info.persisted && navigator.storage?.persist) st.append(btn('Keep my files safe from cleanup', 'check', async () => { const ok = await navigator.storage.persist(); toast(ok ? 'Storage protected' : 'Install the app to protect storage'); showSettings(); }, 'ghost'));
   body.append(st);
   if (S.installPrompt) body.append(section('Install', btn('Add S1 Editor to home screen', 'download', async () => { S.installPrompt.prompt(); S.installPrompt = null; }, 'primary block')));
-  body.scrollTop = keepScroll;
+  // Shortcuts to the sections people look for most.
+  const targets = { claude: 'Claude AI', search: 'AI search', storage: 'Storage', look: 'App background', toolbar: 'Editing toolbar' };
+  const find = id => $$('.psec-title', body).find(t => t.textContent === targets[id])?.parentElement;
+  const nav = h('div', { class: 'chips settings-nav' }, ...[['claude', '🧠 Claude AI'], ['search', '🔍 AI search'], ['storage', '💾 Storage'], ['look', '🎨 Look'], ['toolbar', '🧰 Toolbar']]
+    .map(([id, label]) => h('button', { class: 'chip', onclick: () => find(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, label)));
+  body.prepend(nav);
+  if (jump && find(jump)) requestAnimationFrame(() => find(jump).scrollIntoView({ block: 'start' }));
+  else body.scrollTop = keepScroll;
 }
 
 // ---------------------------------------------------------------- AI indexing (content + faces)
@@ -2047,7 +2055,7 @@ async function showCreate() {
   // 3. Brain + generate
   const brain = hasKey
     ? chips([{ id: true, label: '🧠 Claude (sees your footage)' }, { id: false, label: '⚡ On-device (instant, free)' }], C.useClaude, v => { C.useClaude = v; })
-    : h('p', { class: 'hint' }, 'Using quick on-device AI. For smarter edits that follow your description closely, add a Claude API key in ', h('a', { href: '#settings' }, 'Settings → Claude AI'), '.');
+    : h('p', { class: 'hint' }, 'Using quick on-device AI. For smarter edits that follow your description closely, add a Claude API key in ', h('a', { href: '#settings/claude' }, 'Settings → Claude AI'), '.');
   const results = h('div', { class: 'create-results' });
   body.append(section('3 · Make it', brain,
     btn(C.mode === 'reel' ? 'Generate 3 videos' : 'Generate 3 cover images', 'wand', () => generate(results), 'primary block')), results);
@@ -2325,7 +2333,7 @@ function askClaudePanel() {
   openPanel('Ask Claude', b => {
     if (!S.prefs.claudeKey) {
       b.append(h('p', { class: 'hint' }, 'Tell Claude what you want — “make it darker and moody”, “add SATURDAY NIGHT at the start”, “cut it to 15 seconds” — and it edits the project for you. It needs a Claude API key.'),
-        btn('Add my Claude API key', 'settings', () => { closePanel(); go('#settings'); }, 'primary block'));
+        btn('Add my Claude API key', 'settings', () => { closePanel(); go('#settings/claude'); }, 'primary block'));
       return;
     }
     const log = h('div', { class: 'claude-log' });
