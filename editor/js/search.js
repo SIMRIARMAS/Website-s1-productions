@@ -177,6 +177,24 @@ export async function videoMoments(m, onFrame, size = 384) {
     }
   } finally { v.removeAttribute('src'); v.load(); URL.revokeObjectURL(url); }
 }
+// Grab frames at specific times (seconds) from one video.
+export async function framesAt(m, times, onFrame, size = 384) {
+  const url = URL.createObjectURL(m.blob);
+  const v = document.createElement('video');
+  v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+  try {
+    if (!(await once(v, 'loadeddata', 8000))) return;
+    const k = Math.min(1, size / Math.max(v.videoWidth, v.videoHeight));
+    for (const t of times) {
+      v.currentTime = Math.max(0, Math.min(t, (v.duration || t) - 0.05));
+      await once(v, 'seeked', 5000);
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(v.videoWidth * k)); c.height = Math.max(1, Math.round(v.videoHeight * k));
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      await onFrame(c, t);
+    }
+  } finally { v.removeAttribute('src'); v.load(); URL.revokeObjectURL(url); }
+}
 export function meanVec(vs) {
   const out = new Array(vs[0].length).fill(0);
   for (const v of vs) for (let i = 0; i < v.length; i++) out[i] += v[i];

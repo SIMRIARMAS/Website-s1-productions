@@ -410,3 +410,34 @@ body.selecting .lib-body { padding-bottom: 110px; }
 .preview-controls { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px; }
 .preview-controls .play { width: 42px; height: 42px; flex: none; }
 .preview-bar { flex: 1; }
+
+/* ---------- create ---------- */
+.create-ai { display: flex; align-items: center; gap: 16px; padding: 18px 20px; border-radius: 22px; text-align: left; background: var(--panel); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent), 0 12px 40px -18px var(--accent); }
+.create-ai .ic { width: 34px; height: 34px; color: var(--accent); stroke-width: 1.6; }
+.create-ai b { display: block; font-size: 18px; }
+.create-ai small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.35; }
+.create-strip { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); margin: 6px 0 10px; }
+.add-tile { display: grid; place-items: center; align-content: center; gap: 4px; border: 2px dashed var(--line); background: transparent; color: var(--accent); font-size: 12px; }
+.add-tile .ic { width: 26px; height: 26px; }
+.with-mic { position: relative; margin: 8px 0; }
+.with-mic .field { padding-right: 52px; }
+.mic { position: absolute; right: 6px; top: 6px; color: var(--accent); }
+.mic.on { background: var(--accent); color: #fff; animation: pulse 1.2s infinite; }
+#createBody .field + .field { margin-top: 8px; }
+.gen-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 8px 0; }
+.gen-card { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 16px; background: var(--panel); border: 1px solid var(--faint); }
+.gen-thumb { position: relative; display: block; width: 100%; aspect-ratio: 9/14; border-radius: 10px; overflow: hidden; background: #000; margin-bottom: 4px; }
+.gen-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.gen-thumb .proj-play { bottom: 8px; left: 8px; top: auto; }
+.gen-card b { font-size: 14px; }
+.gen-card small { color: var(--muted); font-size: 11.5px; line-height: 1.35; }
+.gen-card .gen-meta { color: var(--accent); }
+.gen-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: auto; padding-top: 6px; }
+.gen-btns .btn { padding: 8px 6px; min-height: 36px; font-size: 13px; }
+.gen-status { margin-top: 12px; }
+/* ---------- ask claude ---------- */
+.claude-log { display: flex; flex-direction: column; gap: 8px; max-height: 26dvh; overflow-y: auto; margin-bottom: 8px; }
+.msg { padding: 9px 12px; border-radius: 14px; font-size: 13.5px; line-height: 1.4; max-width: 88%; }
+.msg.me { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.msg.ai { align-self: flex-start; background: var(--chip); border-bottom-left-radius: 4px; }
+.msg.err { color: #ffd36a; }

@@ -2,7 +2,8 @@ import { db, uid } from './db.js';
 import { Engine, ASPECTS, TRANSITIONS, layout, totalDuration, clipDuration, audioDuration, mediaRecord, forgetMedia, pickRecorderMime } from './engine.js';
 import { PRESETS, ADJUST_KEYS, filterer, uniformsFor, analyzeFrame } from './gl.js';
 import { ic } from './icons.js';
-import { TOOL_WORDS, SETTINGS_WORDS, score, clipWorker, embedImage, embedText, dot, detectFaces, loadPeople, savePeople, assignPerson, frameCanvas, videoMoments, meanVec, AI_INDEX_VERSION } from './search.js';
+import { TOOL_WORDS, SETTINGS_WORDS, score, clipWorker, embedImage, embedText, dot, detectFaces, loadPeople, savePeople, assignPerson, frameCanvas, videoMoments, framesAt, meanVec, AI_INDEX_VERSION } from './search.js';
+import { askClaudeJSON, testKey, imageBlock, reelSchema, editSchema } from './claude.js';
 import { PORTRAIT_MODES, portraitActive, segKind, segmenterReady, segmenterInfo, loadSegmenter, upscale, cancelUpscale } from './ai.js';
 import { $, $$, h, fmtTime, fmtShort, fmtBytes, toast, openSheet, confirmSheet, promptSheet, slider, chips, swatches, section, btn, debounce } from './ui.js';
 import { importFiles, importBlob, pickFiles, saveToDevice, shareFiles, fileNameFor, storageInfo, finishPendingImports, canShareFiles } from './media.js';
@@ -34,7 +35,7 @@ const ACCENTS = ['#3d8bff', '#5ab0ff', '#7cf2b0', '#ffd36a', '#ffa06a', '#ff6fb5
 const DEFAULT_PREFS = {
   id: 'prefs', v: 2, theme: 'blueblack', accent: '#3d8bff', customBg: null, customColor: null, panels: 'glass', dim: 35, exportRes: 1080, fps: 30,
   gradient: { a: '#000000', b: '#1e5eff', angle: 160 }, textColor: '#f6f3fb', uiFont: 'Space Grotesk', panelColor: '#05070d', panelAlpha: 70,
-  myThemes: [], tools: { order: null, hidden: [] }, aiSearch: false, dest: null,
+  myThemes: [], tools: { order: null, hidden: [] }, aiSearch: false, dest: null, claudeKey: null,
 };
 
 const canvas = $('#preview');
@@ -83,6 +84,7 @@ async function route() {
   if (scr === 'editor' && arg) return openEditor(arg);
   if (scr === 'library') return showLibrary();
   if (scr === 'settings') return showSettings();
+  if (scr === 'create') return showCreate();
   return showHome();
 }
 window.addEventListener('hashchange', route);
@@ -592,6 +594,7 @@ $('#panelDone').addEventListener('click', () => closePanel());
 const live = () => changed({ timeline: false });
 
 const TOOLS = [
+  { id: 'claude', label: 'Ask Claude', icon: 'chat', fn: askClaudePanel, hot: true },
   { id: 'ai', label: 'AI', icon: 'wand', fn: aiPanel, hot: true },
   { id: 'canvas', label: 'Canvas', icon: 'canvas', fn: canvasPanel },
   { id: 'bg', label: 'Background', icon: 'bg', fn: bgPanel },
@@ -1563,6 +1566,25 @@ async function showSettings() {
     h('p', { class: 'hint' }, 'Drag tools into the order you like and hide the ones you don’t use. Tip: long-press any tool in the editor.'),
     btn('Customize toolbar', 'arrange', toolbarSheet, 'ghost block')));
 
+  // Claude AI
+  const keyIn = h('input', { class: 'field', type: 'password', placeholder: 'sk-ant-…', value: p.claudeKey || '', autocomplete: 'off', spellcheck: 'false' });
+  const keyMsg = h('p', { class: 'hint' }, p.claudeKey ? '✓ Key saved on this phone.' : '');
+  body.append(section('Claude AI',
+    h('p', { class: 'hint' }, 'Connect Claude to plan edits from your footage in ✨ Create and to make changes you ask for in the editor (“Ask Claude”). Claude looks at small previews of the clips you use.'),
+    keyIn,
+    h('div', { class: 'row-btns' },
+      btn('Save', 'check', () => { p.claudeKey = keyIn.value.trim() || null; savePrefs(); keyMsg.textContent = p.claudeKey ? '✓ Key saved on this phone.' : 'Key removed.'; }, 'primary'),
+      btn('Test', 'wand', async () => {
+        const k = keyIn.value.trim();
+        if (!k) return;
+        keyMsg.textContent = 'Testing…';
+        try { await testKey(k); p.claudeKey = k; savePrefs(); keyMsg.textContent = '✓ Connected to Claude. Key saved on this phone.'; }
+        catch (e) { keyMsg.textContent = e.message; }
+      }, 'ghost'),
+      p.claudeKey ? btn('Remove', 'trash', () => { p.claudeKey = null; savePrefs(); showSettings(); }, 'ghost danger') : null),
+    keyMsg,
+    h('p', { class: 'hint' }, 'Get a key at console.anthropic.com → API keys. Usage is billed to your Anthropic account — roughly 2–6¢ per Create or Ask. The key is stored only in this app on this phone; don’t share the app’s data or screenshots of it.')));
+
   // AI search
   const aiSec = section('AI search',
     h('p', { class: 'hint' }, 'Search your library by what’s in it (“sunset”, “crowd”, “DJ decks”) and find everyone by face. Everything is scanned on this phone — nothing is uploaded. Turning it on downloads about 75 MB once (use Wi-Fi).'),
@@ -1856,10 +1878,577 @@ function openSearch() {
   }, { wide: true, onClose: () => { S.onIndex = null; } });
 }
 
+// ---------------------------------------------------------------- voice input
+function micButton(target) {
+  const R = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!R) return null;
+  const b = h('button', { class: 'icon-btn mic', type: 'button', 'aria-label': 'Speak instead of typing', html: ic('mic') });
+  let rec = null;
+  b.onclick = () => {
+    if (rec) { rec.stop(); return; }
+    rec = new R();
+    rec.lang = navigator.language || 'en-US';
+    rec.interimResults = true;
+    const base = target.value.trim() ? target.value.trim() + ' ' : '';
+    rec.onresult = e => { let t = ''; for (const r of e.results) t += r[0].transcript; target.value = base + t; target.dispatchEvent(new Event('input')); };
+    rec.onerror = e => { if (e.error !== 'aborted' && e.error !== 'no-speech') toast('Couldn’t use the microphone — check its permission'); };
+    rec.onend = () => { rec = null; b.classList.remove('on'); };
+    b.classList.add('on');
+    rec.start();
+  };
+  return b;
+}
+
+// ---------------------------------------------------------------- music analysis (beat + best section)
+function analyzeMusic(buf) {
+  const ch = buf.getChannelData(0), sr = buf.sampleRate, hop = Math.round(sr / 100);
+  const n = Math.floor(ch.length / hop);
+  const env = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let s = 0; for (let j = i * hop, e = j + hop; j < e; j++) s += ch[j] * ch[j]; env[i] = Math.sqrt(s / hop); }
+  const on = new Float32Array(n);
+  for (let i = 1; i < n; i++) on[i] = Math.max(0, env[i] - env[i - 1]);
+  let best = 0, lagBest = 50;
+  for (let lag = 33; lag <= 86; lag++) { let s = 0; for (let i = lag; i < n; i++) s += on[i] * on[i - lag]; if (s > best) { best = s; lagBest = lag; } }
+  let bpm = 6000 / lagBest;
+  while (bpm < 85) bpm *= 2;
+  while (bpm > 170) bpm /= 2;
+  return { bpm: Math.round(bpm), env };
+}
+// Start of the most energetic stretch (usually the drop/chorus).
+function loudestStart(env, len) {
+  const w = Math.round(len * 100);
+  if (env.length <= w) return 0;
+  let s = 0; for (let i = 0; i < w; i++) s += env[i];
+  let best = s, at = 0;
+  for (let i = w; i < env.length; i++) { s += env[i] - env[i - w]; if (s > best) { best = s; at = i - w + 1; } }
+  return Math.max(0, at / 100 - 0.4);
+}
+
+// ---------------------------------------------------------------- Create (AI reels + cover images)
+const STYLES = {
+  auto: { name: 'Let AI decide' },
+  hype: { name: 'Hype', shot: 1.2, filters: ['pop', 'neon', 'vivid'], transitions: ['none', 'zoom', 'white'], fonts: ['Anton', 'Bebas Neue'], style: 'outline', anim: 'pop', motion: 'in', trDur: 0.3 },
+  chill: { name: 'Chill', shot: 3, filters: ['soft', 'warm', 'dusk'], transitions: ['fade'], fonts: ['Playfair Display', 'Caveat'], style: 'shadow', anim: 'fade', motion: 'in', trDur: 0.8 },
+  cinematic: { name: 'Cinematic', shot: 2.5, filters: ['teal', 'film', 'noir'], transitions: ['black', 'fade'], fonts: ['Bebas Neue', 'Montserrat'], style: 'shadow', anim: 'fade', motion: 'in', trDur: 0.7 },
+  vintage: { name: 'Vintage', shot: 2.4, filters: ['vintage', 'film', 'warm'], transitions: ['fade', 'black'], fonts: ['Permanent Marker', 'Caveat'], style: 'shadow', anim: 'type', motion: 'pan', trDur: 0.6 },
+  clean: { name: 'Clean', shot: 2, filters: ['none', 'crisp', 'vivid'], transitions: ['slide', 'none', 'wipe'], fonts: ['Montserrat', 'Space Grotesk'], style: 'box', anim: 'slide', motion: 'none', trDur: 0.4 },
+};
+const FORMATS = [{ id: '9:16', label: 'Reels / TikTok / Shorts' }, { id: '16:9', label: 'YouTube' }, { id: '4:5', label: 'IG post' }, { id: '1:1', label: 'Square' }];
+const POS_Y = { top: 0.18, middle: 0.5, bottom: 0.8 };
+const SIZE_V = { small: 6, medium: 9, large: 13 };
+const hexOk = c => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : null;
+
+function styleFromText(desc) {
+  const d = (desc || '').toLowerCase();
+  if (/hype|energy|fast|party|turn up|lit|club|rave|drop/.test(d)) return 'hype';
+  if (/chill|calm|soft|relax|smooth|vibe|sunset|lofi|lo-fi/.test(d)) return 'chill';
+  if (/cinematic|film|movie|epic|dramatic|moody|dark/.test(d)) return 'cinematic';
+  if (/vintage|retro|old|90s|80s|throwback|film grain/.test(d)) return 'vintage';
+  return 'clean';
+}
+
+async function showCreate() {
+  show('create');
+  await loadMedia();
+  S.create ||= { items: [], mode: 'reel', desc: '', style: 'auto', length: 15, format: '9:16', music: 'clip', title: '', useClaude: true };
+  const C = S.create;
+  C.items = C.items.map(m => media.get(m.id)).filter(Boolean);
+  const body = $('#createBody');
+  body.innerHTML = '';
+  const hasKey = !!S.prefs.claudeKey;
+
+  // 1. Footage
+  const strip = h('div', { class: 'grid pick create-strip' });
+  const paintStrip = () => {
+    strip.innerHTML = '';
+    C.items.forEach((m, i) => {
+      const t = mediaTile(m, () => { C.items.splice(i, 1); paintStrip(); });
+      t.append(h('span', { class: 'peek', html: ic('close') }));
+      strip.append(t);
+    });
+    strip.append(h('button', {
+      class: 'tile add-tile', 'aria-label': 'Add footage', html: ic('plus') + '<span>Add</span>', onclick: async () => {
+        const picked = await pickMedia({ kinds: ['video', 'image'], title: 'Footage for this edit' });
+        for (const m of picked) if (!C.items.some(x => x.id === m.id)) C.items.push(m);
+        paintStrip();
+      },
+    }));
+  };
+  paintStrip();
+  const find = h('input', { class: 'field', placeholder: S.prefs.aiSearch ? 'Or find it: “me DJing”, “crowd at night”…' : 'Turn on AI search in Settings to find footage by describing it', disabled: !S.prefs.aiSearch });
+  find.addEventListener('keydown', async e => {
+    if (e.key !== 'Enter' || !find.value.trim()) return;
+    const found = await aiFind(find.value.trim(), 12);
+    let n = 0;
+    for (const m of found) if (!C.items.some(x => x.id === m.id)) { C.items.push(m); n++; }
+    toast(n ? `Added ${n} matching clip${n > 1 ? 's' : ''}` : 'Nothing new matched');
+    find.value = ''; paintStrip();
+  });
+  body.append(section('1 · Your footage', h('p', { class: 'hint' }, 'Add the videos and photos to work with. Tap one to remove it.'), strip, find));
+
+  // 2. What you want
+  const desc = h('textarea', { class: 'field', rows: 3, placeholder: 'Describe it… e.g. “Hype reel of my DJ set, fast cuts on the beat, end on the crowd, text: SATURDAY NIGHT”', value: C.desc });
+  desc.addEventListener('input', () => { C.desc = desc.value; });
+  const title = h('input', { class: 'field', placeholder: 'On-screen title (optional)', value: C.title, maxlength: 60 });
+  title.addEventListener('input', () => { C.title = title.value; });
+  const musicRow = h('div');
+  const paintMusic = () => {
+    musicRow.innerHTML = '';
+    const songs = [...media.values()].filter(m => m.kind === 'audio').sort((a, z) => z.created - a.created);
+    const opts = [{ id: 'clip', label: 'Video’s own sound' }, { id: 'none', label: 'Silent' }, ...songs.slice(0, 8).map(m => ({ id: m.id, label: '♪ ' + m.name.replace(/\.[^.]+$/, '') }))];
+    musicRow.append(chips(opts, C.music, v => { C.music = v; }),
+      btn('Import a song', 'upload', async () => {
+        const files = await pickFiles('audio/*', false);
+        if (!files.length) return;
+        const [r] = await importFiles(files);
+        if (r) { media.set(r.id, r); C.music = r.id; paintMusic(); }
+      }, 'ghost'));
+  };
+  paintMusic();
+  const modeChips = chips([{ id: 'reel', label: '🎬 Short video' }, { id: 'cover', label: '🖼️ Cover images' }], C.mode, v => { C.mode = v; showCreate(); });
+  body.append(section('2 · What do you want?', modeChips,
+    h('div', { class: 'with-mic' }, desc, micButton(desc)), title,
+    C.mode === 'reel' ? section('Style', chips(Object.entries(STYLES).map(([id, s]) => ({ id, label: s.name })), C.style, v => { C.style = v; })) : null,
+    C.mode === 'reel' ? section('Length', chips([7, 15, 30, 60].map(v => ({ id: v, label: v + 's' })), C.length, v => { C.length = v; })) : null,
+    section('Made for', chips(FORMATS.map(f => ({ id: f.id, label: f.label })), C.format, v => { C.format = v; })),
+    C.mode === 'reel' ? section('Music', musicRow, h('p', { class: 'hint' }, 'With a song, cuts land on the beat and it starts at the song’s most energetic part.')) : null));
+
+  // 3. Brain + generate
+  const brain = hasKey
+    ? chips([{ id: true, label: '🧠 Claude (sees your footage)' }, { id: false, label: '⚡ On-device (instant, free)' }], C.useClaude, v => { C.useClaude = v; })
+    : h('p', { class: 'hint' }, 'Using quick on-device AI. For smarter edits that follow your description closely, add a Claude API key in ', h('a', { href: '#settings' }, 'Settings → Claude AI'), '.');
+  const results = h('div', { class: 'create-results' });
+  body.append(section('3 · Make it', brain,
+    btn(C.mode === 'reel' ? 'Generate 3 videos' : 'Generate 3 cover images', 'wand', () => generate(results), 'primary block')), results);
+}
+
+// AI search used to grab footage for Create.
+async function aiFind(q, n) {
+  const indexed = [...media.values()].filter(m => m.emb && m.kind !== 'audio');
+  if (!indexed.length) { toast('Your library hasn’t been scanned yet — turn on AI search in Settings'); return []; }
+  const v = await embedText(q);
+  const ranked = indexed.map(m => ({ m, s: m.frames?.length ? Math.max(...m.frames.map(f => dot(v, f.emb))) : dot(v, m.emb) })).sort((a, z) => z.s - a.s);
+  const best = ranked[0]?.s || 0;
+  return ranked.filter(x => x.s >= Math.max(0.12, best - 0.07)).slice(0, n).map(x => x.m);
+}
+
+// Candidate moments from the footage. Refs look like V2@12.5 (video 2 at 12.5 s) or P1 (photo 1).
+async function collectMoments(items, withImages, onStep) {
+  const vids = items.filter(m => m.kind === 'video');
+  const per = Math.max(3, Math.min(10, Math.floor(40 / Math.max(1, vids.length))));
+  const out = [];
+  let vi = 0, pi = 0;
+  for (const m of items) {
+    if (m.kind === 'video') {
+      vi++;
+      const dur = m.duration || 0;
+      const n = Math.max(1, Math.min(per, Math.floor(dur / 1.5)));
+      const times = Array.from({ length: n }, (_, k) => +(dur * (k + 0.5) / n).toFixed(1));
+      if (withImages) await framesAt(m, times, (c, t) => { out.push({ ref: `V${vi}@${t}`, m, t, canvas: c }); onStep?.(); });
+      else for (const t of times) out.push({ ref: `V${vi}@${t}`, m, t });
+    } else {
+      pi++;
+      out.push({ ref: `P${pi}`, m, t: null, canvas: withImages ? await frameCanvas(m, 384) : null });
+      onStep?.();
+    }
+  }
+  return out;
+}
+
+// Score moments against the description with on-device AI (when the library has been scanned).
+async function scoreMoments(moments, q) {
+  if (!q || !S.prefs.aiSearch) return;
+  let v;
+  try { v = await embedText(q); } catch { return; }
+  for (const mo of moments) {
+    const m = mo.m;
+    if (m.frames?.length && mo.t != null) {
+      const f = m.frames.reduce((a, b) => Math.abs(b.t - mo.t) < Math.abs(a.t - mo.t) ? b : a);
+      mo.score = dot(v, f.emb);
+    } else if (m.emb) mo.score = dot(v, m.emb);
+  }
+}
+
+function localPlans(moments, o) {
+  const st = STYLES[o.style];
+  const beat = o.bpm ? 60 / o.bpm : null;
+  let shot = st.shot;
+  if (beat) shot = Math.max(1, Math.round(st.shot / beat)) * beat;
+  const count = Math.max(2, Math.min(moments.length * 2, Math.round(o.length / shot)));
+  const byScore = [...moments].sort((a, z) => (z.score ?? 0) - (a.score ?? 0) || Math.random() - 0.5);
+  const chrono = [...moments];
+  const pick = (list, k) => { const out = []; let i = 0; while (out.length < k && list.length) { out.push(list[i % list.length]); i++; } return out; };
+  const spread = (list, k) => Array.from({ length: Math.min(k, list.length) }, (_, i) => list[Math.floor(i * list.length / Math.min(k, list.length))]);
+  const sets = [
+    { name: 'Best moments', why: 'The strongest matching moments, in the order they happened.', list: pick(byScore, count).sort((a, z) => chrono.indexOf(a) - chrono.indexOf(z)) },
+    { name: 'Remix', why: 'A punchier shuffle that opens on your best shot.', list: (() => { const l = pick(byScore, count); const [first, ...rest] = l; return [first, ...rest.sort(() => Math.random() - 0.5)]; })() },
+    { name: 'Story', why: 'Moments from start to finish across all your footage.', list: spread(chrono, count) },
+  ];
+  const titleText = o.title || (o.desc.match(/["“”']([^"“”']{2,40})["“”']/) || [])[1] || '';
+  return sets.map((s, v) => {
+    const per = o.length / Math.max(1, s.list.length);
+    const dur = beat ? Math.max(beat, Math.round(per / beat) * beat) : per;
+    const texts = titleText ? [{ text: titleText, at: 0.15, dur: Math.min(2.6, o.length * 0.4), position: 'middle', size: 'large', style: st.style, anim: st.anim, color: '#ffffff' }] : [];
+    return {
+      name: s.name, why: s.why, shots: s.list.map(mo => ({ ref: mo.ref, dur })),
+      filter: st.filters[v % st.filters.length], transition: st.transitions[v % st.transitions.length], font: st.fonts[v % st.fonts.length],
+      motion: st.motion, texts, keepClipSound: false,
+    };
+  });
+}
+
+async function claudePlans(moments, o, onStatus) {
+  const lines = [
+    `Brief: ${o.desc || '(none — make something that suits the footage)'}`,
+    o.title ? `On-screen title to use exactly: "${o.title}"` : 'No title given — add short text only if it helps.',
+    `Style: ${o.style === 'auto' ? 'your choice based on the brief and footage' : STYLES[o.style].name}`,
+    `Target length: about ${o.length} seconds. Format: ${o.format}.`,
+    o.bpm ? `Music: ${o.bpm} BPM (one beat = ${(60 / o.bpm).toFixed(3)} s). Make every shot a whole number of beats so cuts land on the beat.` : (o.music === 'clip' ? 'Sound: the clips’ own audio.' : 'No music.'),
+    `There are ${moments.length} moments below. Video refs are V<video>@<seconds>; photo refs are P<photo>.`,
+  ];
+  const content = [{ type: 'text', text: lines.join('\n') }];
+  for (const mo of moments) {
+    content.push({ type: 'text', text: mo.t != null ? `${mo.ref} — "${mo.m.name}" (${fmtShort(mo.m.duration || 0)} video), moment at ${mo.t}s` : `${mo.ref} — photo "${mo.m.name}"` });
+    if (mo.canvas) content.push(imageBlock(mo.canvas));
+  }
+  onStatus('Claude is watching your footage and planning…');
+  const res = await askClaudeJSON({
+    apiKey: S.prefs.claudeKey, effort: 'medium', content,
+    system: [
+      'You are the editor inside S1 Studio, a phone video app for a DJ, photographer and content creator. You plan short-form social edits from the user’s own footage.',
+      `Return exactly ${o.mode === 'cover' ? 3 : 3} variations that follow the brief and are clearly different from each other (pacing, look, order or opening shot).`,
+      o.mode === 'cover'
+        ? 'This is for COVER IMAGES (thumbnails/posters): each variation must have exactly one shot (the single best still for a cover) and bold text that would make someone tap. Set dur to 1.'
+        : 'Each variation is a short video: open with the strongest, most eye-catching moment, keep the energy right for the brief, avoid near-identical moments back to back, and make shot durations add up to roughly the target length. Each shot dur is between 0.4 and 8 seconds.',
+      'Use only refs that appear in the list. Text on screen: short and punchy (6 words or fewer per line), times inside the video, colors as #rrggbb. Use the user’s title exactly when given.',
+      '"why" is one short sentence telling the user the idea behind the variation. Names are 1–3 words.',
+    ].join('\n'),
+    schema: reelSchema({ filters: PRESETS.map(p => p.id), transitions: TRANSITIONS.map(t => t.id), fonts: FONTS }),
+  });
+  return res.variations || [];
+}
+
+async function buildFromPlan(plan, byRef, o) {
+  const st = STYLES[o.style === 'auto' ? styleFromText(o.desc) : o.style];
+  if (o.mode === 'cover') {
+    const mo = byRef.get(plan.shots[0]?.ref) || [...byRef.values()][0];
+    let m = mo.m;
+    if (m.kind === 'video') {
+      // Turn the chosen video moment into a still for the photo editor.
+      let blob = null;
+      await framesAt(m, [mo.t ?? 0], async c => { blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.95)); }, 2160);
+      m = blob ? await importBlob(blob, `${m.name.replace(/\.[^.]+$/, '')} frame ${fmtShort(mo.t ?? 0)}.jpg`, 'frames') : null;
+      if (!m) throw new Error('Couldn’t grab that frame');
+      media.set(m.id, m);
+    }
+    const p = newProject('photo');
+    p.name = '🖼️ ' + plan.name; p.aspect = o.format;
+    const c = newClip(m); c.duration = 5; c.fit = 'fill'; c.filter = plan.filter; c.filterAmount = 90; c.motion = 'none';
+    p.clips = [c];
+    p.texts = plan.texts.map(t => textFrom(t, plan, st, true));
+    return p;
+  }
+  const p = newProject('video');
+  p.name = '✨ ' + plan.name; p.aspect = o.format;
+  for (const s of plan.shots) {
+    const mo = byRef.get(s.ref);
+    if (!mo) continue;
+    const m = mo.m, c = newClip(m);
+    const d = Math.max(0.4, Math.min(8, s.dur || 2));
+    if (m.kind === 'video') {
+      const len = Math.min(d, m.duration || d);
+      const a = Math.max(0, Math.min((mo.t ?? 0) - len * 0.35, (m.duration || len) - len));
+      c.in = a; c.out = a + len;
+    } else c.duration = d;
+    c.fit = 'fill'; c.filter = plan.filter; c.filterAmount = 85;
+    c.motion = plan.motion === 'none' && m.kind === 'image' ? 'in' : plan.motion;
+    c.transition = { type: plan.transition, dur: st?.trDur ?? 0.5 };
+    const withSong = o.music && o.music !== 'clip' && o.music !== 'none';
+    c.volume = o.music === 'none' ? 0 : withSong ? (plan.keepClipSound ? 30 : 0) : 100;
+    c.muted = c.volume === 0;
+    p.clips.push(c);
+  }
+  if (!p.clips.length) return null;
+  p.clips[p.clips.length - 1].transition = { type: 'none', dur: 0.5 };
+  const T = totalDuration(p);
+  p.texts = plan.texts.filter(t => t.text?.trim()).map(t => textFrom(t, plan, st, false, T));
+  if (o.music && o.music !== 'clip' && o.music !== 'none') {
+    const r = media.get(o.music);
+    p.audio = [{ id: uid(), mediaId: o.music, name: r?.name.replace(/\.[^.]+$/, '') || 'Music', start: 0, offset: o.musicStart || 0, dur: T, volume: 100, fadeIn: 0.2, fadeOut: Math.min(1.5, T / 4) }];
+  }
+  return p;
+}
+function textFrom(t, plan, st, still, T = 9999) {
+  return {
+    id: uid(), text: t.text.trim(), sticker: false, start: still ? 0 : Math.max(0, Math.min(t.at || 0, T - 0.5)), dur: still ? 9999 : Math.max(0.5, Math.min(t.dur || 2.5, T)),
+    x: 0.5, y: POS_Y[t.position] ?? 0.5, size: SIZE_V[t.size] ?? 9, font: plan.font, color: hexOk(t.color) || '#ffffff',
+    style: t.style || st?.style || 'shadow', anim: still ? 'none' : (t.anim || st?.anim || 'fade'), rotate: 0, opacity: 100, bold: true,
+  };
+}
+
+// Render a frame of a project (for result cards and cover images).
+let renderEngine = null;
+async function renderProject(p, short, at) {
+  renderEngine ||= new Engine(document.createElement('canvas'), $('#hidden-media'));
+  const re = renderEngine;
+  await re.load(structuredClone(p));
+  for (const f of new Set(p.texts.map(t => t.font))) await document.fonts.load(`700 40px "${f}"`).catch(() => {});
+  const t = at ?? (p.kind === 'photo' ? 0 : Math.min(re.total * 0.25, 1.2));
+  re.seek(t);
+  await re.waitReady(t, 2500);
+  await new Promise(r => setTimeout(r, 120));
+  const { W, H } = re.outputSize(short);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  re.renderFrame(c.getContext('2d'), W, H, t, false);
+  re.load({ clips: [], texts: [], audio: [] });
+  return c;
+}
+
+async function generate(results) {
+  const C = S.create;
+  if (!C.items.length) return toast('Add some videos or photos first');
+  results.innerHTML = '';
+  const status = h('p', { class: 'hint center gen-status' }, 'Getting started…');
+  const bar = h('div', { class: 'progress' }, h('div', { class: 'progress-bar' }));
+  results.append(h('div', { class: 'exporting' }, status, bar));
+  const setP = (f, msg) => { bar.firstChild.style.width = Math.round(f * 100) + '%'; if (msg) status.textContent = msg; };
+  const useClaude = !!S.prefs.claudeKey && C.useClaude;
+  const o = { ...C, style: C.style === 'auto' && !useClaude ? styleFromText(C.desc) : C.style, desc: C.desc.trim(), title: C.title.trim() };
+  if (o.mode === 'cover') o.length = 1;
+  try {
+    if (o.mode === 'reel' && o.music && !['clip', 'none'].includes(o.music)) {
+      setP(0.05, 'Listening to your song…');
+      const buf = await engine.loadBuffer(o.music);
+      if (buf) { const a = analyzeMusic(buf); o.bpm = a.bpm; o.musicStart = loudestStart(a.env, o.length); }
+    }
+    let k = 0;
+    const total = C.items.reduce((s, m) => s + (m.kind === 'video' ? 6 : 1), 0);
+    const moments = await collectMoments(C.items, useClaude || o.mode === 'cover', () => setP(0.1 + 0.3 * Math.min(1, ++k / total), 'Looking through your footage…'));
+    if (!moments.length) throw new Error('Couldn’t read that footage');
+    const byRef = new Map(moments.map(m => [m.ref, m]));
+    let plans;
+    if (useClaude) {
+      setP(0.45);
+      plans = await claudePlans(moments, o, msg => setP(0.5, msg));
+    } else {
+      setP(0.5, 'Picking the best moments…');
+      await scoreMoments(moments, o.desc || o.title);
+      if (o.mode === 'cover') {
+        const st = STYLES[o.style === 'auto' ? styleFromText(o.desc) : o.style];
+        const best = [...moments].sort((a, z) => (z.score ?? 0) - (a.score ?? 0) || Math.random() - 0.5).slice(0, 3);
+        const title = o.title || (o.desc.match(/["“”']([^"“”']{2,40})["“”']/) || [])[1] || '';
+        plans = best.map((mo, v) => ({ name: ['Bold', 'Clean', 'Mood'][v], why: 'A strong still from your footage with your title on top.', shots: [{ ref: mo.ref, dur: 1 }], filter: st.filters[v % st.filters.length], transition: 'none', font: st.fonts[v % st.fonts.length], motion: 'none', texts: title ? [{ text: title, at: 0, dur: 1, position: ['bottom', 'middle', 'top'][v], size: 'large', style: ['outline', 'box', 'shadow'][v], anim: 'none', color: '#ffffff' }] : [], keepClipSound: false }));
+      } else plans = localPlans(moments, o);
+    }
+    setP(0.75, 'Putting your edits together…');
+    const outs = [];
+    for (const plan of plans.slice(0, 3)) {
+      const p = await buildFromPlan(plan, byRef, o);
+      if (!p) continue;
+      const cv = await renderProject(p, 360);
+      p.poster = cv.toDataURL('image/jpeg', 0.8); p.posterAR = cv.width / cv.height;
+      outs.push({ p, plan });
+    }
+    if (!outs.length) throw new Error('Couldn’t build an edit from that footage');
+    showCreateResults(results, outs, o);
+  } catch (e) {
+    results.innerHTML = '';
+    results.append(h('p', { class: 'hint warn center' }, e.message || String(e)));
+  }
+}
+
+function showCreateResults(results, outs, o) {
+  results.innerHTML = '';
+  const save = async p => { p.updated = Date.now(); await db.put('projects', p); };
+  const grid = h('div', { class: 'gen-grid' });
+  for (const { p, plan } of outs) {
+    const isVid = p.kind !== 'photo';
+    grid.append(h('div', { class: 'gen-card' },
+      h('button', { class: 'gen-thumb', onclick: () => isVid ? previewProject(p) : previewCover(p), 'aria-label': 'Preview ' + plan.name },
+        h('img', { src: p.poster, alt: '' }), h('span', { class: 'proj-play', html: ic(isVid ? 'play' : 'image') })),
+      h('b', {}, plan.name), h('small', {}, plan.why),
+      isVid ? h('small', { class: 'gen-meta' }, `${fmtShort(totalDuration(p))} · ${p.clips.length} shots`) : null,
+      h('div', { class: 'gen-btns' },
+        btn('Edit', 'edit', async () => { await save(p); go('#editor/' + p.id); }, 'ghost'),
+        isVid ? btn('Export', 'download', async () => { await save(p); S.exportAfterOpen = true; go('#editor/' + p.id); }, 'primary')
+          : btn('Save', 'download', async () => {
+            const cv = await renderProject(p, 1440);
+            const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.95));
+            const r = await importBlob(blob, `${p.name.replace(/^\W+/, '')} cover.jpg`, 'exports');
+            if (r) { media.set(r.id, r); toast('Saved to Library → Exports', { label: 'Share', fn: () => shareFiles([r]) }); }
+          }, 'primary'))));
+  }
+  results.append(h('div', { class: 'psec-title' }, o.mode === 'cover' ? 'Your cover images' : 'Your videos — tap one to watch'), grid,
+    btn('Make 3 more', 'wand', () => generate(results), 'ghost block'));
+}
+function previewCover(p) {
+  openSheet(p.name, async b => {
+    const cv = await renderProject(p, 1080);
+    cv.className = 'result-media';
+    b.append(cv);
+  }, { wide: true });
+}
+
+// ---------------------------------------------------------------- Ask Claude (in the editor)
+function askClaudePanel() {
+  openPanel('Ask Claude', b => {
+    if (!S.prefs.claudeKey) {
+      b.append(h('p', { class: 'hint' }, 'Tell Claude what you want — “make it darker and moody”, “add SATURDAY NIGHT at the start”, “cut it to 15 seconds” — and it edits the project for you. It needs a Claude API key.'),
+        btn('Add my Claude API key', 'settings', () => { closePanel(); go('#settings'); }, 'primary block'));
+      return;
+    }
+    const log = h('div', { class: 'claude-log' });
+    const ta = h('textarea', { class: 'field', rows: 2, placeholder: 'What should Claude change?' });
+    const send = btn('Send', 'chat', run, 'primary');
+    const sugg = ['Make it punchier', 'Darker, moody look', 'Add a title at the start', 'Sharper and brighter', 'Slow-mo the best part', 'Cut it to about 15 seconds'];
+    b.append(log, h('div', { class: 'chips' }, ...sugg.map(s => h('button', { class: 'chip', onclick: () => { ta.value = s; run(); } }, s))),
+      h('div', { class: 'with-mic' }, ta, micButton(ta)), send,
+      h('p', { class: 'hint' }, 'Claude sees your clips and current settings. Everything it changes can be undone.'));
+    async function run() {
+      const q = ta.value.trim();
+      if (!q) return;
+      ta.value = '';
+      send.disabled = true;
+      log.append(h('div', { class: 'msg me' }, q));
+      const thinking = h('div', { class: 'msg ai' }, 'Thinking…');
+      log.append(thinking);
+      log.scrollTop = log.scrollHeight;
+      try {
+        const res = await askClaudeJSON({
+          apiKey: S.prefs.claudeKey, effort: 'medium',
+          system: [
+            'You are the editor inside S1 Studio, a phone video editor. The user describes a change; you return a short friendly reply and a list of edit operations.',
+            'Only use the operations and values in the schema. Indexes are 0-based. target -1 on a "clip" op means every clip; null means the clip under the playhead.',
+            'Adjust values are -100..100 (sharpen, vignette, fade, grain 0..100). filterAmount 0..100. speed 0.1..4. volume 0..200. zoom 50..300. Times are seconds on the timeline, except trimStart/trimEnd which are seconds inside that clip’s source video.',
+            'Leave every field you are not changing as null. If something can’t be done with these operations, say so in the reply and return no ops for it.',
+          ].join('\n'),
+          content: claudeContext(q),
+          schema: editSchema({ filters: PRESETS.map(p => p.id), transitions: TRANSITIONS.map(t => t.id), fonts: FONTS, aspects: ASPECTS.map(a => a.id) }),
+        });
+        const before = snapshot();
+        commit(() => applyOps(res.ops || []));
+        const changed = snapshot() !== before;
+        thinking.textContent = res.reply || (changed ? 'Done.' : 'No changes.');
+        if (changed) toast('Claude made changes', { label: 'Undo', fn: undo });
+      } catch (e) {
+        thinking.textContent = e.message;
+        thinking.classList.add('err');
+      }
+      send.disabled = false;
+      log.scrollTop = log.scrollHeight;
+    }
+  }, 'claude');
+}
+function claudeContext(request) {
+  const p = S.project;
+  const L = layout(p);
+  const ctx = {
+    aspect: p.aspect, background: p.bg, totalSeconds: +engine.total.toFixed(2), playhead: +engine.t.toFixed(2),
+    clips: L.map((o, i) => {
+      const c = o.clip, m = media.get(c.mediaId);
+      return {
+        index: i, kind: c.type, file: m?.name, startsAt: +o.start.toFixed(2), length: +o.dur.toFixed(2),
+        sourceSeconds: c.type === 'video' ? { in: +c.in.toFixed(2), out: +c.out.toFixed(2), full: +(m?.duration || 0).toFixed(2) } : undefined,
+        speed: c.speed, volume: c.muted ? 0 : c.volume, filter: c.filter, filterAmount: c.filterAmount, adjust: c.adjust, fit: c.fit, zoom: c.zoom,
+        motion: c.motion, transitionAfter: c.transition, portrait: c.ai?.mode || 'none',
+      };
+    }),
+    texts: p.texts.map((t, i) => ({ index: i, text: t.text, at: t.start, dur: t.dur, y: t.y, size: t.size, style: t.style, font: t.font, color: t.color, anim: t.anim })),
+    audio: p.audio.map((a, i) => ({ index: i, name: a.name, startsAt: a.start, length: a.dur, volume: a.volume, fadeIn: a.fadeIn, fadeOut: a.fadeOut })),
+  };
+  const content = [{ type: 'text', text: `Request: ${request}\n\nProject:\n${JSON.stringify(ctx)}\n\nImages: the current preview frame, then a thumbnail of each clip in order.` }];
+  const cur = document.createElement('canvas');
+  const { W, H } = engine.outputSize(480);
+  cur.width = W; cur.height = H;
+  engine.renderFrame(cur.getContext('2d'), W, H, engine.t, false);
+  content.push(imageBlock(cur, 480));
+  for (const c of p.clips.slice(0, 16)) {
+    const th = thumbOf(c.mediaId);
+    if (th?.startsWith('data:image/jpeg')) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: th.split(',')[1] } });
+  }
+  return content;
+}
+function applyOps(ops) {
+  const p = S.project;
+  const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+  const T = () => totalDuration(p);
+  const clipsFor = t => t == null ? [target()].filter(Boolean) : t === -1 ? p.clips : [p.clips[t]].filter(Boolean);
+  // Deletions last, highest index first, so earlier indexes stay valid.
+  const order = { delete_text: 1, delete_clip: 1 };
+  ops = [...ops].sort((a, z) => (order[a.op] || 0) - (order[z.op] || 0) || ((order[a.op] && order[z.op]) ? (z.target ?? 0) - (a.target ?? 0) : 0));
+  const set = (o, k, v) => { if (v !== null && v !== undefined) o[k] = v; };
+  for (const o of ops) {
+    switch (o.op) {
+      case 'clip':
+        for (const c of clipsFor(o.target)) {
+          set(c, 'filter', o.filter);
+          if (o.filterAmount != null) c.filterAmount = clampN(o.filterAmount, 0, 100);
+          c.adjust ||= {};
+          for (const k of ['brightness', 'contrast', 'saturation', 'warmth']) if (o[k] != null) c.adjust[k] = clampN(Math.round(o[k]), -100, 100);
+          for (const k of ['sharpen', 'vignette', 'fade', 'grain']) if (o[k] != null) c.adjust[k] = clampN(Math.round(o[k]), 0, 100);
+          if (o.speed != null && c.type === 'video') c.speed = clampN(o.speed, 0.1, 4);
+          if (o.volume != null) { c.volume = clampN(Math.round(o.volume), 0, 200); c.muted = c.volume === 0; }
+          set(c, 'muted', o.muted);
+          set(c, 'fit', o.fit);
+          if (o.zoom != null) c.zoom = clampN(o.zoom, 50, 300);
+          set(c, 'motion', o.motion);
+          if (o.transition != null) c.transition = { type: o.transition, dur: c.transition?.dur || 0.6 };
+          if (o.transitionDur != null) c.transition = { ...(c.transition || { type: 'fade' }), dur: clampN(o.transitionDur, 0.2, 2) };
+          if (o.duration != null && c.type === 'image') c.duration = clampN(o.duration, 0.5, 20);
+          if (c.type === 'video') {
+            const full = media.get(c.mediaId)?.duration || c.out;
+            if (o.trimStart != null) c.in = clampN(o.trimStart, 0, c.out - 0.2);
+            if (o.trimEnd != null) c.out = clampN(o.trimEnd, c.in + 0.2, full);
+          }
+          if (o.portrait != null) c.ai = { amount: 60, light: 0, ...(c.ai || {}), mode: o.portrait };
+        }
+        break;
+      case 'add_text':
+        p.texts.push({
+          id: uid(), text: o.text || 'Text', sticker: false, start: clampN(o.at ?? engine.t, 0, Math.max(0, T() - 0.3)), dur: clampN(o.dur ?? 3, 0.3, Math.max(0.3, T())),
+          x: 0.5, y: POS_Y[o.position] ?? 0.5, size: SIZE_V[o.size] ?? 9, font: o.font || 'Montserrat', color: hexOk(o.color) || '#ffffff',
+          style: o.style || 'shadow', anim: o.anim || 'fade', rotate: 0, opacity: 100,
+        });
+        if (p.kind === 'photo') { const t = p.texts[p.texts.length - 1]; t.start = 0; t.dur = 9999; }
+        break;
+      case 'edit_text': {
+        const t = p.texts[o.target];
+        if (!t) break;
+        set(t, 'text', o.text); if (o.at != null) t.start = clampN(o.at, 0, T()); if (o.dur != null) t.dur = clampN(o.dur, 0.3, T());
+        if (o.position) t.y = POS_Y[o.position]; if (o.size) t.size = SIZE_V[o.size];
+        set(t, 'font', o.font); if (hexOk(o.color)) t.color = o.color; set(t, 'style', o.style); set(t, 'anim', o.anim);
+        break;
+      }
+      case 'delete_text': if (p.texts[o.target]) p.texts.splice(o.target, 1); break;
+      case 'delete_clip': if (p.clips[o.target] && p.clips.length > 1) p.clips.splice(o.target, 1); break;
+      case 'move_clip': {
+        const c = p.clips[o.target];
+        if (!c || o.to == null) break;
+        p.clips.splice(o.target, 1); p.clips.splice(clampN(o.to, 0, p.clips.length), 0, c);
+        break;
+      }
+      case 'canvas':
+        set(p, 'aspect', o.aspect);
+        if (o.bgType) p.bg = { ...p.bg, type: o.bgType, ...(o.bgType === 'color' ? { color: hexOk(o.bgColor) || p.bg.color || '#000000' } : {}) };
+        else if (hexOk(o.bgColor)) p.bg = { ...p.bg, type: 'color', color: o.bgColor };
+        break;
+      case 'audio': {
+        const a = p.audio[o.target ?? 0];
+        if (!a) break;
+        if (o.volume != null) a.volume = clampN(Math.round(o.volume), 0, 200);
+        if (o.fadeIn != null) a.fadeIn = clampN(o.fadeIn, 0, 5); if (o.fadeOut != null) a.fadeOut = clampN(o.fadeOut, 0, 5);
+        if (o.at != null) a.start = clampN(o.at, 0, T()); if (o.dur != null) a.dur = Math.max(0.5, o.dur);
+        break;
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------- wiring
 $('#newVideo').onclick = () => createProject('video');
 $('#newPhoto').onclick = () => createProject('photo');
 $('#openLibrary').onclick = () => go('#library');
+$('#openCreate').onclick = () => go('#create');
 $$('[data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
 $('#edBack').onclick = () => go('#home');
 $('#playBtn').onclick = () => engine.toggle();

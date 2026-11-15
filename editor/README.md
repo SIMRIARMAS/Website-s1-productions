@@ -22,6 +22,8 @@ Open `editor/` on any HTTPS host (GitHub Pages works), then use **Add to Home sc
 - **Export by destination:** choose YouTube, Shorts, Reels, an Instagram post or Story, TikTok, or custom. The app suggests the best shape, resolution (up to 4K), frame rate and bitrate, and warns about length limits.
 - **Customizable toolbar:** drag tools into any order and hide the ones you don't use. Long-press a tool, or tap Customize.
 - **Look:** themes, your own photo, a solid color or a custom gradient for the background. You can also set the accent color, text color, app font, and panel color and transparency, and save the result as your own theme.
+- **✨ Create:** give it clips and photos and describe what you want, by typing or by voice. It returns 3 different short videos, or 3 cover images, that you can preview, edit or export. With a song, cuts land on the beat and the music starts at its most energetic part. It works on the phone, and with a Claude API key Claude looks at your footage and plans the edits.
+- **Ask Claude (editor tool):** describe a change ("darker and moody", "add SATURDAY NIGHT at the start", "cut it to 15 seconds") and Claude edits the project. Every change can be undone. This needs your own Claude API key (Settings → Claude AI). The key is stored only on the device, and calls go straight to Anthropic using Claude Opus 5.5.
 - **Library (file manager):** folders, filters by type, multi-select, share, save, move, rename and delete. Exports, voiceovers and saved frames are sorted into their own folders automatically.
 - **Share into the app:** once it's installed, S1 Studio shows up in the Android share sheet, so you can share a video from your gallery straight into it.
 - **Theme:** 8 background themes, your own photo (with a darkness slider) or a solid color, an accent color, and frosted or solid panels.
@@ -37,6 +39,7 @@ Everything is stored on the device in IndexedDB. Nothing is uploaded.
 - `js/media.js`: importing, thumbnails, save and share
 - `js/ai.js`, `js/upscale-worker.js`: AI Portrait and AI Upscale
 - `js/search.js`, `js/clip-worker.js`: search, AI content search and people
+- `js/claude.js`: Claude API connection (official Anthropic SDK) and edit/plan schemas
 - `js/db.js`: IndexedDB storage
 - `sw.js`, `manifest.webmanifest`: offline support, install and share target
 

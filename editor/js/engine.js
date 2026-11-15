@@ -454,7 +454,7 @@ export class Engine {
       let alpha = (x.opacity ?? 100) / 100, scale = 1, dy = 0;
       let text = x.text || '';
       // Photos have no timeline, and a text being edited while paused should stay fully visible.
-      const still = this.p.kind === 'photo' || (interactive && !this.playing && this.selectedText === x.id);
+      const still = this.p.kind === 'photo' || (interactive && !this.playing);
       switch (still ? 'none' : x.anim) {
         case 'fade': alpha *= Math.min(inA, outA); break;
         case 'pop': scale = inA < 1 ? Math.max(0.01, easeOutBack(inA)) : 1; alpha *= outA; break;
