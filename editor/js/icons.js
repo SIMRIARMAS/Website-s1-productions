@@ -53,6 +53,7 @@ export const ICONS = {
   right: '<path d="M9 18l6-6-6-6"/>',
   reset: '<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/>',
   wave: '<path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 7v10M21 12h0"/>',
+  wand: '<path d="M4 20L15 9"/><path d="M13.5 7.5l3 3"/><path d="M18 2.5l.7 1.8 1.8.7-1.8.7L18 7.5l-.7-1.8-1.8-.7 1.8-.7z"/><path d="M8 3l.5 1.3L9.8 5l-1.3.5L8 7l-.5-1.5L6.2 5l1.3-.7z"/><path d="M19.5 13l.5 1.3 1.3.5-1.3.5-.5 1.4-.5-1.4-1.3-.5 1.3-.5z"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01" stroke-width="2.4"/>',
 };
 export const ic = (name, cls = '') => `<svg viewBox="0 0 24 24" class="ic ${cls}" aria-hidden="true">${ICONS[name] || ''}</svg>`;

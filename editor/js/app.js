@@ -2,6 +2,7 @@ import { db, uid } from './db.js';
 import { Engine, ASPECTS, TRANSITIONS, layout, totalDuration, clipDuration, audioDuration, mediaRecord, forgetMedia, pickRecorderMime } from './engine.js';
 import { PRESETS, ADJUST_KEYS, filterer, uniformsFor, analyzeFrame } from './gl.js';
 import { ic } from './icons.js';
+import { PORTRAIT_MODES, portraitActive, segKind, segmenterReady, segmenterInfo, loadSegmenter, upscale, cancelUpscale } from './ai.js';
 import { $, $$, h, fmtTime, fmtShort, fmtBytes, toast, openSheet, confirmSheet, promptSheet, slider, chips, swatches, section, btn, debounce } from './ui.js';
 import { importFiles, importBlob, pickFiles, saveToDevice, shareFiles, fileNameFor, storageInfo, finishPendingImports, canShareFiles } from './media.js';
 
@@ -410,7 +411,8 @@ function renderTimeline() {
       h('span', { class: 'badge' }, fmtShort(o.dur)),
       c.type === 'video' && c.speed !== 1 ? h('span', { class: 'badge sp' }, c.speed + '×') : null,
       c.type === 'video' && (c.muted || !c.volume) ? h('span', { class: 'badge mu', html: ic('mute') }) : null,
-      c.filter && c.filter !== 'none' ? h('span', { class: 'badge fx', html: ic('filter') }) : null));
+      c.filter && c.filter !== 'none' ? h('span', { class: 'badge fx', html: ic('filter') }) : null,
+      portraitActive(c) ? h('span', { class: 'badge ai', html: ic('wand') }) : null));
     if (i < p.clips.length - 1) {
       const on = c.transition?.type && c.transition.type !== 'none';
       main.append(h('button', {
@@ -497,6 +499,7 @@ $('#panelDone').addEventListener('click', () => closePanel());
 const live = () => changed({ timeline: false });
 
 const TOOLS = [
+  { id: 'ai', label: 'AI', icon: 'wand', fn: aiPanel, hot: true },
   { id: 'canvas', label: 'Canvas', icon: 'canvas', fn: canvasPanel },
   { id: 'bg', label: 'Background', icon: 'bg', fn: bgPanel },
   { id: 'trim', label: 'Trim', icon: 'trim', fn: trimPanel, video: true },
@@ -708,6 +711,110 @@ function enhanceTool() {
       adjustPanel(c);
     },
   }, 'Enhance all clips'));
+}
+
+
+// ---- AI: portrait segmentation + upscale/restore
+function aiPanel() {
+  const c = target();
+  if (!c) return;
+  openPanel('AI', b => {
+    c.ai ||= { mode: 'none', amount: 60, light: 0 };
+    const kind = segKind(c);
+    const status = h('p', { class: 'hint' });
+    const ensure = () => {
+      if (segmenterReady(kind)) { status.textContent = 'AI finds the person in every frame — no green screen needed.'; return; }
+      status.textContent = `Loading the AI model (${segmenterInfo(kind).label}, first time only)…`;
+      loadSegmenter(kind)
+        .then(() => { status.textContent = 'AI ready — it finds the person in every frame.'; live(); })
+        .catch(() => { status.textContent = 'Couldn’t load the AI model. Check your connection and try again.'; });
+    };
+    const extra = h('div');
+    const renderExtra = () => {
+      extra.innerHTML = '';
+      const m = c.ai.mode;
+      if (m === 'blur' || m === 'spotlight') extra.append(slider({ label: m === 'blur' ? 'Blur' : 'Dim', min: 0, max: 100, value: c.ai.amount ?? 60, onInput: v => { c.ai.amount = v; live(); } }));
+      if (m === 'color') extra.append(swatches(BG_COLORS, c.ai.color, v => { c.ai.color = v; live(); }));
+      if (m === 'image') extra.append(btn(c.ai.mediaId ? 'Change background image' : 'Choose background image', 'image', async () => {
+        const [img] = await pickMedia({ kinds: ['image'], multiple: false, title: 'Background image' });
+        if (img) { c.ai.mediaId = img.id; await engine.sync(); live(); renderExtra(); }
+      }, 'ghost block'));
+      if (m === 'cutout') extra.append(h('p', { class: 'hint' }, S.project.kind === 'photo'
+        ? 'Save as PNG for a transparent cut-out. In the editor, your Canvas background shows behind you.'
+        : 'Your Canvas background (color, gradient or image) shows behind you.'), btn('Change background', 'bg', bgPanel, 'ghost block'));
+    };
+    b.append(section('AI Portrait',
+      chips(PORTRAIT_MODES, c.ai.mode || 'none', v => { c.ai.mode = v; if (v !== 'none') ensure(); live(); renderExtra(); renderTimeline(); }),
+      extra,
+      slider({ label: 'Light on you', min: -50, max: 100, value: c.ai.light || 0, center: 0, onInput: v => { c.ai.light = v; if (v) ensure(); live(); } }),
+      status,
+      applyAllBtn(x => { x.ai = { ...c.ai }; }, 'Use for all clips')));
+    renderExtra();
+    if (portraitActive(c)) ensure();
+    else status.textContent = 'Blur, dim or replace the background behind people — works on video too.';
+    b.append(section('AI Upscale & Restore',
+      h('p', { class: 'hint' }, c.type === 'image'
+        ? 'Rebuilds detail at 4× the size and cleans up noise, blur and JPEG blockiness. Best on small, soft or older photos.'
+        : 'Photos only for now — upscaling every video frame takes more power than a phone has. For video, use Enhance and the Sharpen slider.'),
+      c.type === 'image' ? btn('Upscale this photo', 'wand', () => upscaleClip(c), 'primary block') : null));
+    b.append(section('Auto Enhance', btn('Balance light, color & sharpness', 'enhance', () => { closePanel(); enhanceTool(); }, 'ghost block')));
+  });
+}
+
+async function upscaleClip(c) {
+  const rec = await runUpscale(media.get(c.mediaId));
+  if (!rec) return;
+  commit(() => { c.mediaId = rec.id; });
+  await engine.sync();
+  lastCanvasKey = ''; fitCanvas();
+  toast(`✨ Upscaled to ${rec.w}×${rec.h}`, { label: 'Undo', fn: undo });
+}
+
+function runUpscale(m) {
+  return new Promise(resolve => {
+    let finished = false;
+    const end = (rec, close) => { finished = true; resolve(rec); close(); };
+    openSheet('AI Upscale & Restore', (b, close) => {
+      const big = Math.max(m.w || 1, m.h || 1);
+      let maxIn = 512;
+      const outTxt = h('p', { class: 'hint' });
+      const upd = () => {
+        const k = Math.min(1, maxIn / big);
+        const ow = Math.round(m.w * k) * 4, oh = Math.round(m.h * k) * 4;
+        outTxt.textContent = `Your photo: ${m.w}×${m.h} → about ${ow}×${oh}.` + (ow * oh < (m.w * m.h) * 0.9 ? ' Your photo is already big, so it comes out smaller but with restored detail — the original stays in your Library.' : '');
+      };
+      upd();
+      const opts = h('div', {},
+        chips([{ id: 384, label: 'Quick' }, { id: 512, label: 'Standard' }, { id: 768, label: 'Max detail' }], maxIn, v => { maxIn = v; upd(); }),
+        outTxt,
+        h('p', { class: 'hint' }, 'Runs on your phone. The first time it downloads the AI model (about 50 MB, use Wi-Fi). Newer phones take seconds; older ones a minute or two.'),
+        btn('Start', 'wand', start, 'primary block'));
+      b.append(opts);
+      async function start() {
+        opts.remove();
+        const pct = h('div', { class: 'progress-pct' }, '0%');
+        const bar = h('div', { class: 'progress' }, h('div', { class: 'progress-bar' }));
+        const msg = h('p', { class: 'hint center' }, 'Starting AI…');
+        b.append(h('div', { class: 'exporting' }, pct, bar, msg, btn('Cancel', 'close', () => { cancelUpscale(); end(null, close); }, 'ghost block')));
+        const set = (v, text) => { pct.textContent = Math.round(v) + '%'; bar.firstChild.style.width = v + '%'; msg.textContent = text; };
+        try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { }
+        try {
+          const blob = await upscale(m.blob, {
+            maxIn, onStatus: st => {
+              if (st.phase === 'download' && st.total) set(st.loaded / st.total * 100, `Downloading AI model… ${fmtBytes(st.loaded)} of ${fmtBytes(st.total)} (first time only)`);
+              if (st.phase === 'run') set(st.done / st.total * 100, `Restoring detail… ${st.done}/${st.total} · ${st.device === 'webgpu' ? 'GPU' : 'CPU'}`);
+            },
+          });
+          set(100, 'Saving…');
+          const rec = await importBlob(blob, `${m.name.replace(/\.[^.]+$/, '')} (AI 4x).jpg`, m.folder);
+          if (rec) media.set(rec.id, rec);
+          end(rec, close);
+        } catch (e) {
+          if (!finished) { toast(e.message === 'cancelled' ? 'Cancelled' : 'AI upscale failed: ' + e.message); end(null, close); }
+        } finally { wakeLock?.release?.(); wakeLock = null; }
+      }
+    }, { onClose: () => { if (!finished) { finished = true; cancelUpscale(); resolve(null); } } });
+  });
 }
 
 // ---- Text & stickers
@@ -1015,11 +1122,13 @@ async function exportPhoto() {
     const m = media.get(p.clips[0].mediaId);
     const native = Math.min(4096, Math.min(m?.w || 2160, m?.h || 2160));
     let res = native;
-    b.append(section('Format', chips([{ id: 'image/jpeg', label: 'JPG' }, { id: 'image/png', label: 'PNG' }], fmt, v => { fmt = v; })),
+    const cut = p.clips[0].ai?.mode === 'cutout';
+    if (cut) fmt = 'image/png';
+    b.append(section('Format', chips([{ id: 'image/jpeg', label: 'JPG' }, { id: 'image/png', label: cut ? 'PNG (transparent)' : 'PNG' }], fmt, v => { fmt = v; })),
       section('Size', chips([{ id: native, label: `Full (${native}px)` }, { id: 1080, label: '1080px' }], res, v => { res = v; })),
       btn('Save', 'download', async () => {
         b.innerHTML = '<p class="hint center">Rendering…</p>';
-        const blob = await engine.exportImage(res, fmt, 0.95);
+        const blob = await engine.exportImage(res, fmt, 0.95, cut && fmt === 'image/png');
         const r = await importBlob(blob, `${p.name.replace(/[\\/:*?"<>|]/g, '-')}.${fmt === 'image/png' ? 'png' : 'jpg'}`, 'exports');
         b.innerHTML = '';
         showResult(b, r, close);
@@ -1164,7 +1273,12 @@ function viewMedia(m) {
           p.clips = [newClip(m)];
           if (m.kind === 'image') p.clips[0].duration = 5;
           await db.put('projects', p); go('#editor/' + p.id);
-        }, 'ghost') : null),
+        }, 'ghost') : null,
+        m.kind === 'image' ? btn('AI Upscale', 'wand', async () => {
+          close();
+          const rec = await runUpscale(m);
+          if (rec) { toast(`✨ Saved ${rec.w}×${rec.h} copy`); showLibrary(); }
+        }, 'ghost accent') : null),
       h('div', { class: 'menu' },
         h('button', { html: ic('edit') + 'Rename', onclick: async () => { close(); const n = await promptSheet('Rename', m.name); if (n) { m.name = n; await db.put('media', m); showLibrary(); } } }),
         h('button', { html: ic('move') + 'Move to folder', onclick: () => { close(); moveTo([m]); } }),

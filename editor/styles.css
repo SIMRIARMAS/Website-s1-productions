@@ -142,6 +142,7 @@ body.solid-panels .sel-bar, body.solid-panels .proj, body.solid-panels .create-m
 .clip .badge { bottom: 3px; left: 4px; right: auto; font-size: 10px; padding: 1px 5px; }
 .clip .badge.sp { left: auto; right: 4px; }
 .clip .badge.mu { top: 3px; bottom: auto; left: 4px; }
+.clip .badge.ai { top: 3px; bottom: auto; left: 50%; right: auto; transform: translateX(-50%); color: #ffd36a; }
 .clip .badge.fx { top: 3px; bottom: auto; right: 4px; left: auto; color: var(--accent); }
 .tr-btn {
   position: absolute; top: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 7px; z-index: 2;

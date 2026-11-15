@@ -1,6 +1,7 @@
 // Timeline engine: plays a project in the preview canvas, mixes audio, and records exports.
 import { filterer, uniformsFor, isNeutral } from './gl.js';
 import { db } from './db.js';
+import { portrait, portraitActive, preparePortrait, resetMattes, onAIReady } from './ai.js';
 
 export const ASPECTS = [
   { id: 'orig', label: 'Original' }, { id: '9:16', label: '9:16' }, { id: '16:9', label: '16:9' },
@@ -59,6 +60,7 @@ export class Engine {
     this.textBoxes = [];
     this.tiny = document.createElement('canvas');
     this.tinyCtx = this.tiny.getContext('2d');
+    onAIReady(() => { resetMattes(); this.requestRender(); });
     this.mid = document.createElement('canvas');
     this.midCtx = this.mid.getContext('2d');
   }
@@ -93,6 +95,7 @@ export class Engine {
         this.connectVideo(v);
       }
       if (c.type === 'image') await this.ensureImage(c.mediaId);
+      if (c.ai?.mediaId) await this.ensureImage(c.ai.mediaId);
       const v = this.videos.get(c.id);
       if (v) this.applyVolume(v, c);
     }
@@ -327,16 +330,15 @@ export class Engine {
     return null;
   }
 
-  renderFrame(ctx, W, H, t, interactive) {
-    const p = this.p;
+  renderFrame(ctx, W, H, t, interactive, transparent = false) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
+    if (transparent) ctx.clearRect(0, 0, W, H);
+    else { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
     const a = this.activeAt(t);
     if (a.i >= 0) {
       const baseIdx = a.pair ? (a.p < 0.5 ? a.pair[0] : a.pair[1]) : a.i;
-      this.drawBackground(ctx, W, H, a.L[baseIdx]);
+      if (!transparent) this.drawBackground(ctx, W, H, a.L[baseIdx]);
       if (a.pair) this.drawTransition(ctx, W, H, a.L[a.pair[0]], a.L[a.pair[1]], clamp(a.p, 0, 1), a.type, t);
       else this.drawClip(ctx, W, H, a.L[a.i], t);
     } else {
@@ -403,6 +405,13 @@ export class Engine {
       const pw = Math.min(s.sw, dw * Math.min(1, 1600 / Math.max(dw, dh)));
       const out = filterer().process(s.src, pw, pw * s.sh / s.sw, uniformsFor(c));
       if (out) img = out;
+    }
+    if (portraitActive(c)) {
+      // AI Portrait: segment the person and rebuild the background around them.
+      const key = c.type === 'video' ? s.src.currentTime.toFixed(3) : c.mediaId;
+      const iw = img === s.src ? s.sw : img.width, ih = img === s.src ? s.sh : img.height;
+      const outP = portrait(c, s, img, iw, ih, key, this.images.get(c.ai.mediaId), this.playing);
+      if (outP) img = outP;
     }
     ctx.save();
     ctx.globalAlpha = fx.alpha ?? 1;
@@ -504,12 +513,14 @@ export class Engine {
   }
 
   // Render a still (photo export / snapshot).
-  async exportImage(short, type = 'image/jpeg', quality = 0.95) {
+  async exportImage(short, type = 'image/jpeg', quality = 0.95, transparent = false) {
+    await preparePortrait(this.p);
+    resetMattes();
     const { W, H } = this.outputSize(short);
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     await this.waitReady(this.t);
-    this.renderFrame(c.getContext('2d'), W, H, this.t, false);
+    this.renderFrame(c.getContext('2d'), W, H, this.t, false, transparent);
     return new Promise(res => c.toBlob(res, type, quality));
   }
 
@@ -540,6 +551,8 @@ export class Engine {
     this.cancelled = false;
     this.t = 0;
     this.syncVideos(0);
+    await preparePortrait(this.p);
+    resetMattes();
     await this.waitReady(0);
     this.renderFrame(ctx, W, H, 0, false);
     const prevOnTime = this.onTime;
