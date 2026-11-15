@@ -1,11 +1,48 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1c1838"/><stop offset=".6" stop-color="#3a1d4a"/><stop offset="1" stop-color="#7a3150"/>
+    <radialGradient id="bg" cx=".5" cy=".46" r=".75">
+      <stop offset="0" stop-color="#111214"/><stop offset=".6" stop-color="#060607"/><stop offset="1" stop-color="#000"/>
+    </radialGradient>
+    <radialGradient id="barrel" cx=".5" cy=".5" r=".5">
+      <stop offset=".78" stop-color="#0b0c0e"/><stop offset=".93" stop-color="#1b1d21"/><stop offset="1" stop-color="#050506"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8a8f96"/><stop offset=".35" stop-color="#2a2d32"/><stop offset=".7" stop-color="#15171a"/><stop offset="1" stop-color="#6b7077"/>
     </linearGradient>
+    <radialGradient id="glass" cx=".44" cy=".4" r=".7">
+      <stop offset="0" stop-color="#0f2a2a"/><stop offset=".45" stop-color="#061214"/><stop offset=".85" stop-color="#020405"/><stop offset="1" stop-color="#000"/>
+    </radialGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3fe0b0"/><stop offset=".5" stop-color="#18a37f"/><stop offset="1" stop-color="#0b5e4a" stop-opacity=".4"/>
+    </linearGradient>
+    <path id="arcTop" d="M 108 256 A 148 148 0 0 1 404 256"/>
+    <path id="arcBot" d="M 94 256 A 162 162 0 0 0 418 256"/>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#g)"/>
-  <rect x="96" y="150" width="232" height="212" rx="36" fill="none" stroke="#ff6fb5" stroke-width="30"/>
-  <path d="M328 226l88-54v168l-88-54z" fill="#ff6fb5"/>
-  <text x="212" y="296" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="104" fill="#fff">S1</text>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- barrel -->
+  <circle cx="256" cy="256" r="196" fill="url(#barrel)"/>
+  <circle cx="256" cy="256" r="196" fill="none" stroke="url(#rim)" stroke-width="3.5"/>
+  <circle cx="256" cy="256" r="184" fill="none" stroke="#2a2c31" stroke-width="1.5"/>
+  <!-- lettering ring -->
+  <text font-family="Helvetica Neue, Arial, sans-serif" font-weight="700" font-size="25" letter-spacing="7" fill="#f2f3f5">
+    <textPath xlink:href="#arcTop" href="#arcTop" startOffset="50%" text-anchor="middle">S1 EDITOR</textPath>
+  </text>
+  <text font-family="Helvetica Neue, Arial, sans-serif" font-weight="600" font-size="13" letter-spacing="3.5" fill="#9ea3aa">
+    <textPath xlink:href="#arcBot" href="#arcBot" startOffset="50%" text-anchor="middle">EDIT · CREATE · SHARE  ⌀58</textPath>
+  </text>
+  <!-- inner rings -->
+  <circle cx="256" cy="256" r="134" fill="#07080a" stroke="#3a3d43" stroke-width="2.5"/>
+  <circle cx="256" cy="256" r="124" fill="none" stroke="#16181b" stroke-width="8"/>
+  <circle cx="256" cy="256" r="116" fill="url(#glass)" stroke="#4a4e55" stroke-width="1.5"/>
+  <!-- teal reflections on the front element -->
+  <path d="M 168 210 A 96 96 0 0 1 300 166 L 290 186 A 76 76 0 0 0 186 222 Z" fill="url(#teal)" opacity=".9"/>
+  <path d="M 178 236 A 82 82 0 0 1 196 206 L 206 214 A 70 70 0 0 0 192 240 Z" fill="#7cf2c8" opacity=".55"/>
+  <circle cx="256" cy="256" r="88" fill="none" stroke="#1f2a2b" stroke-width="2"/>
+  <circle cx="256" cy="256" r="70" fill="none" stroke="#2c3638" stroke-width="5" opacity=".9"/>
+  <circle cx="256" cy="256" r="52" fill="#020303" stroke="#33393b" stroke-width="2"/>
+  <circle cx="256" cy="256" r="32" fill="#000" stroke="#1d2223" stroke-width="2"/>
+  <!-- highlights -->
+  <path d="M 230 236 L 252 230 L 262 240 L 236 246 Z" fill="#9ff5d9" opacity=".7"/>
+  <ellipse cx="300" cy="300" rx="7" ry="4" fill="#fff" opacity=".35" transform="rotate(-35 300 300)"/>
+  <path d="M 348 330 A 120 120 0 0 1 300 366" fill="none" stroke="#d7dade" stroke-opacity=".25" stroke-width="3" stroke-linecap="round"/>
 </svg>

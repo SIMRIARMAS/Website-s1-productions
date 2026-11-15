@@ -1,6 +1,14 @@
 // Small DOM helpers: element builder, toasts, bottom sheets, sliders, chips.
 import { ic } from './icons.js';
 
+// Optional pieces of UI are written as `cond ? el : null`; never let those print "null" on screen.
+for (const proto of [Element.prototype, DocumentFragment.prototype]) {
+  for (const fn of ['append', 'prepend']) {
+    const orig = proto[fn];
+    proto[fn] = function (...nodes) { return orig.apply(this, nodes.flat().filter(n => n != null && n !== false)); };
+  }
+}
+
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
@@ -133,7 +141,7 @@ export function swatches(colors, value, onPick, allowCustom = true) {
       onclick: () => { value = c; render(); onPick(c); },
     }));
     if (allowCustom) {
-      const inp = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(value) ? value : '#ff6fb5' });
+      const inp = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(value) ? value : '#3d8bff' });
       inp.addEventListener('input', () => { value = inp.value; onPick(inp.value); });
       wrap.append(h('label', { class: 'sw custom', 'aria-label': 'Custom color' }, inp));
     }

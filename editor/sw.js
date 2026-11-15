@@ -1,13 +1,14 @@
-// S1 Studio service worker: offline app shell + receiving files from the phone's share sheet.
-const CACHE = 's1studio-v1';
+// S1 Editor service worker: offline app shell + receiving files from the phone's share sheet.
+const CACHE = 's1editor-v7';
+const RUNTIME = 's1editor-ai';
 const SHELL = ['./', './index.html', './styles.css', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png',
-  './js/app.js', './js/engine.js', './js/gl.js', './js/db.js', './js/ui.js', './js/media.js', './js/icons.js'];
+  './js/app.js', './js/engine.js', './js/gl.js', './js/db.js', './js/ui.js', './js/media.js', './js/icons.js', './js/ai.js', './js/upscale-worker.js', './js/search.js', './js/clip-worker.js', './js/claude.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== RUNTIME).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
 function openDB() {
@@ -23,6 +24,27 @@ const kindOf = f => /^video\//.test(f.type) ? 'video' : /^image\//.test(f.type) 
 async function receiveShare(request) {
   const form = await request.formData();
   const files = form.getAll('media').filter(f => f && f.size && kindOf(f));
+  // A shared link (e.g. Instagram → Share → S1 Editor) becomes a reference.
+  if (!files.length) {
+    const text = `${form.get('url') || ''} ${form.get('text') || ''}`;
+    const link = (text.match(/https?:\/\/[^\s<>"']+/) || [])[0];
+    if (link) {
+      const db = await openDB();
+      await new Promise((res, rej) => {
+        const t = db.transaction('settings', 'readwrite');
+        const st = t.objectStore('settings');
+        const g = st.get('references');
+        g.onsuccess = () => {
+          const list = g.result?.list || [];
+          const host = /instagram/.test(link) ? 'Instagram' : /youtu/.test(link) ? 'YouTube' : /tiktok/.test(link) ? 'TikTok' : 'Link';
+          list.push({ id: 'r' + Date.now().toString(36), name: `${host} reference`, link, created: Date.now() });
+          st.put({ id: 'references', list });
+        };
+        t.oncomplete = res; t.onerror = () => rej(t.error);
+      });
+      return Response.redirect('./?reflink=1#refs', 303);
+    }
+  }
   const db = await openDB();
   await new Promise((res, rej) => {
     const t = db.transaction(['media', 'folders'], 'readwrite');
@@ -52,6 +74,9 @@ self.addEventListener('fetch', e => {
       if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
       return r;
     }).catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('./index.html'))));
+  } else if (url.hostname === 'cdn.jsdelivr.net' || url.href.startsWith('https://storage.googleapis.com/mediapipe-models/')) {
+    // AI libraries and models: cache after the first download so AI works offline.
+    e.respondWith(caches.open(RUNTIME).then(c => c.match(e.request).then(hit => hit || fetch(e.request).then(r => { if (r.ok) c.put(e.request, r.clone()); return r; }))));
   } else if (url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com')) {
     e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })));
   }

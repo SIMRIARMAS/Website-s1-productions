@@ -1,6 +1,7 @@
 // Timeline engine: plays a project in the preview canvas, mixes audio, and records exports.
 import { filterer, uniformsFor, isNeutral } from './gl.js';
 import { db } from './db.js';
+import { portrait, portraitActive, preparePortrait, resetMattes, onAIReady } from './ai.js';
 
 export const ASPECTS = [
   { id: 'orig', label: 'Original' }, { id: '9:16', label: '9:16' }, { id: '16:9', label: '16:9' },
@@ -59,6 +60,7 @@ export class Engine {
     this.textBoxes = [];
     this.tiny = document.createElement('canvas');
     this.tinyCtx = this.tiny.getContext('2d');
+    onAIReady(() => { resetMattes(); this.requestRender(); });
     this.mid = document.createElement('canvas');
     this.midCtx = this.mid.getContext('2d');
   }
@@ -93,6 +95,7 @@ export class Engine {
         this.connectVideo(v);
       }
       if (c.type === 'image') await this.ensureImage(c.mediaId);
+      if (c.ai?.mediaId) await this.ensureImage(c.ai.mediaId);
       const v = this.videos.get(c.id);
       if (v) this.applyVolume(v, c);
     }
@@ -327,16 +330,15 @@ export class Engine {
     return null;
   }
 
-  renderFrame(ctx, W, H, t, interactive) {
-    const p = this.p;
+  renderFrame(ctx, W, H, t, interactive, transparent = false) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
+    if (transparent) ctx.clearRect(0, 0, W, H);
+    else { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
     const a = this.activeAt(t);
     if (a.i >= 0) {
       const baseIdx = a.pair ? (a.p < 0.5 ? a.pair[0] : a.pair[1]) : a.i;
-      this.drawBackground(ctx, W, H, a.L[baseIdx]);
+      if (!transparent) this.drawBackground(ctx, W, H, a.L[baseIdx]);
       if (a.pair) this.drawTransition(ctx, W, H, a.L[a.pair[0]], a.L[a.pair[1]], clamp(a.p, 0, 1), a.type, t);
       else this.drawClip(ctx, W, H, a.L[a.i], t);
     } else {
@@ -349,7 +351,7 @@ export class Engine {
     const bg = this.p.bg || { type: 'blur', level: 3 };
     if (bg.type === 'color') { ctx.fillStyle = bg.color || '#000'; ctx.fillRect(0, 0, W, H); return; }
     if (bg.type === 'gradient') {
-      const [c1, c2] = bg.colors || ['#ff6fb5', '#5ab0ff'];
+      const [c1, c2] = bg.colors || ['#000000', '#1e5eff'];
       const g = ctx.createLinearGradient(0, 0, W, H);
       g.addColorStop(0, c1); g.addColorStop(1, c2);
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); return;
@@ -404,6 +406,13 @@ export class Engine {
       const out = filterer().process(s.src, pw, pw * s.sh / s.sw, uniformsFor(c));
       if (out) img = out;
     }
+    if (portraitActive(c)) {
+      // AI Portrait: segment the person and rebuild the background around them.
+      const key = c.type === 'video' ? s.src.currentTime.toFixed(3) : c.mediaId;
+      const iw = img === s.src ? s.sw : img.width, ih = img === s.src ? s.sh : img.height;
+      const outP = portrait(c, s, img, iw, ih, key, this.images.get(c.ai.mediaId), this.playing);
+      if (outP) img = outP;
+    }
     ctx.save();
     ctx.globalAlpha = fx.alpha ?? 1;
     ctx.translate(W / 2 + (c.x || 0) * W + mx + (fx.tx || 0), H / 2 + (c.y || 0) * H + (fx.ty || 0));
@@ -445,7 +454,7 @@ export class Engine {
       let alpha = (x.opacity ?? 100) / 100, scale = 1, dy = 0;
       let text = x.text || '';
       // Photos have no timeline, and a text being edited while paused should stay fully visible.
-      const still = this.p.kind === 'photo' || (interactive && !this.playing && this.selectedText === x.id);
+      const still = this.p.kind === 'photo' || (interactive && !this.playing);
       switch (still ? 'none' : x.anim) {
         case 'fade': alpha *= Math.min(inA, outA); break;
         case 'pop': scale = inA < 1 ? Math.max(0.01, easeOutBack(inA)) : 1; alpha *= outA; break;
@@ -479,7 +488,7 @@ export class Engine {
         const y = (k - (lines.length - 1) / 2) * lh;
         if (style === 'outline') { ctx.lineWidth = px * 0.14; ctx.lineJoin = 'round'; ctx.strokeStyle = x.strokeColor || '#000'; ctx.strokeText(l, 0, y); }
         if (style === 'shadow') { ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = px * 0.25; ctx.shadowOffsetY = px * 0.06; }
-        if (style === 'neon') { ctx.shadowColor = x.color || '#ff6fb5'; ctx.shadowBlur = px * 0.7; ctx.fillStyle = x.color || '#ff6fb5'; ctx.fillText(l, 0, y); ctx.shadowBlur = px * 0.25; ctx.fillStyle = '#fff'; ctx.fillText(l, 0, y); return; }
+        if (style === 'neon') { ctx.shadowColor = x.color || '#3d8bff'; ctx.shadowBlur = px * 0.7; ctx.fillStyle = x.color || '#3d8bff'; ctx.fillText(l, 0, y); ctx.shadowBlur = px * 0.25; ctx.fillStyle = '#fff'; ctx.fillText(l, 0, y); return; }
         ctx.fillStyle = x.color || '#fff';
         ctx.fillText(l, 0, y);
       });
@@ -504,17 +513,19 @@ export class Engine {
   }
 
   // Render a still (photo export / snapshot).
-  async exportImage(short, type = 'image/jpeg', quality = 0.95) {
+  async exportImage(short, type = 'image/jpeg', quality = 0.95, transparent = false) {
+    await preparePortrait(this.p);
+    resetMattes();
     const { W, H } = this.outputSize(short);
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     await this.waitReady(this.t);
-    this.renderFrame(c.getContext('2d'), W, H, this.t, false);
+    this.renderFrame(c.getContext('2d'), W, H, this.t, false, transparent);
     return new Promise(res => c.toBlob(res, type, quality));
   }
 
   // Real-time export: the timeline is played into an offscreen canvas and recorded with sound.
-  async exportVideo({ short = 1080, fps = 30, onProgress }) {
+  async exportVideo({ short = 1080, fps = 30, bitrate, onProgress }) {
     this.pause();
     this.ensureAudio();
     if (this.ac) await this.ac.resume();
@@ -530,7 +541,7 @@ export class Engine {
     const mime = pickRecorderMime();
     const rec = new MediaRecorder(new MediaStream(tracks), {
       mimeType: mime || undefined,
-      videoBitsPerSecond: Math.round(Math.min(16e6, W * H * fps * 0.14)),
+      videoBitsPerSecond: Math.round(bitrate || Math.min(16e6, W * H * fps * 0.14)),
       audioBitsPerSecond: 192000,
     });
     const chunks = [];
@@ -540,6 +551,8 @@ export class Engine {
     this.cancelled = false;
     this.t = 0;
     this.syncVideos(0);
+    await preparePortrait(this.p);
+    resetMattes();
     await this.waitReady(0);
     this.renderFrame(ctx, W, H, 0, false);
     const prevOnTime = this.onTime;
