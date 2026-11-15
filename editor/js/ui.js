@@ -133,7 +133,7 @@ export function swatches(colors, value, onPick, allowCustom = true) {
       onclick: () => { value = c; render(); onPick(c); },
     }));
     if (allowCustom) {
-      const inp = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(value) ? value : '#ff6fb5' });
+      const inp = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(value) ? value : '#3d8bff' });
       inp.addEventListener('input', () => { value = inp.value; onPick(inp.value); });
       wrap.append(h('label', { class: 'sw custom', 'aria-label': 'Custom color' }, inp));
     }

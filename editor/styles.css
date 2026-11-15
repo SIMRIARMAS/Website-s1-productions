@@ -1,6 +1,6 @@
 :root {
-  --app-bg: #0d0b1c;
-  --accent: #ff6fb5;
+  --app-bg: #000;
+  --accent: #3d8bff;
   --text: #f6f3fb;
   --muted: #aaa4bd;
   --faint: rgba(255, 255, 255, 0.07);
@@ -20,7 +20,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; }
 body {
-  font-family: var(--ui); color: var(--text); background: #0d0b1c;
+  font-family: var(--ui); color: var(--text); background: #000;
   overflow: hidden; overscroll-behavior: none; -webkit-font-smoothing: antialiased;
   user-select: none; -webkit-user-select: none; touch-action: manipulation;
 }

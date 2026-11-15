@@ -16,10 +16,11 @@ const S = {
 let media = new Map(); // id -> record (metadata + blob)
 
 const FONTS = ['Montserrat', 'Bebas Neue', 'Anton', 'Space Grotesk', 'Playfair Display', 'Pacifico', 'Caveat', 'Permanent Marker'];
-const TEXT_COLORS = ['#ffffff', '#000000', '#ff6fb5', '#ffa06a', '#ffd36a', '#7cf2b0', '#5ab0ff', '#b48cff', '#ff4d4d'];
+const TEXT_COLORS = ['#ffffff', '#000000', '#3d8bff', '#ff6fb5', '#ffa06a', '#ffd36a', '#7cf2b0', '#5ab0ff', '#b48cff', '#ff4d4d'];
 const STICKERS = '🔥 ✨ 💖 😍 😂 😎 🥹 🙌 👀 💯 🎧 🎶 🎵 🎤 🪩 🕺 💃 🎉 🍾 🥂 📸 🎬 ⚡ 💥 🌙 ⭐ 🌈 🌸 🌴 🌊 ☀️ 🌆 🏙️ 🚀 ❤️ 💜 💙 🖤 🤍 👑 💎 🦋 📍 ✅ ‼️ ❓ 💬 👉 👈 ⬆️ 🔊'.split(' ');
 
 export const THEMES = [
+  { id: 'blueblack', name: 'Blue & Black', bg: 'radial-gradient(130% 60% at 50% -10%,#0d3a8a88,transparent 60%),radial-gradient(90% 50% at 100% 110%,#0a2a6644,transparent 60%),#000' },
   { id: 'dusk', name: 'Dusk', bg: 'linear-gradient(165deg,#1c1838 0%,#35204a 45%,#6e2e52 85%,#c25a5a 120%)' },
   { id: 'midnight', name: 'Midnight', bg: '#0b0b12' },
   { id: 'neon', name: 'Neon', bg: 'radial-gradient(120% 70% at 0% 0%,#ff6fb544,transparent 60%),radial-gradient(100% 60% at 100% 100%,#5ab0ff40,transparent 60%),#0d0b1c' },
@@ -29,10 +30,10 @@ export const THEMES = [
   { id: 'graphite', name: 'Graphite', bg: 'linear-gradient(180deg,#1c1c20,#0e0e10)' },
   { id: 'aurora', name: 'Aurora', bg: 'radial-gradient(90% 60% at 20% 10%,#7cf2b033,transparent 60%),radial-gradient(90% 60% at 90% 40%,#b48cff3a,transparent 60%),radial-gradient(90% 60% at 30% 100%,#5ab0ff30,transparent 60%),#0a0d18' },
 ];
-const ACCENTS = ['#ff6fb5', '#ffa06a', '#ffd36a', '#7cf2b0', '#5ab0ff', '#b48cff', '#ffffff'];
+const ACCENTS = ['#3d8bff', '#5ab0ff', '#7cf2b0', '#ffd36a', '#ffa06a', '#ff6fb5', '#b48cff', '#ffffff'];
 const DEFAULT_PREFS = {
-  id: 'prefs', theme: 'dusk', accent: '#ff6fb5', customBg: null, customColor: null, panels: 'glass', dim: 35, exportRes: 1080, fps: 30,
-  gradient: { a: '#1c1838', b: '#ff6fb5', angle: 160 }, textColor: '#f6f3fb', uiFont: 'Space Grotesk', panelColor: '#120f1e', panelAlpha: 66,
+  id: 'prefs', v: 2, theme: 'blueblack', accent: '#3d8bff', customBg: null, customColor: null, panels: 'glass', dim: 35, exportRes: 1080, fps: 30,
+  gradient: { a: '#000000', b: '#1e5eff', angle: 160 }, textColor: '#f6f3fb', uiFont: 'Space Grotesk', panelColor: '#05070d', panelAlpha: 70,
   myThemes: [], tools: { order: null, hidden: [] }, aiSearch: false, dest: null,
 };
 
@@ -43,7 +44,7 @@ const tl = $('#timeline');
 // ---------------------------------------------------------------- theme
 const UI_FONTS = ['Space Grotesk', 'Montserrat', 'System', 'Playfair Display', 'Bebas Neue', 'Caveat', 'Permanent Marker', 'Anton'];
 const TEXT_TONES = ['#f6f3fb', '#ffffff', '#fff1e0', '#ffd9ec', '#d9fff0', '#dcecff', '#ffe9a8'];
-const PANEL_TONES = ['#120f1e', '#000000', '#1b1b22', '#2a1430', '#0c1d2b', '#10231a', '#2b1a10'];
+const PANEL_TONES = ['#05070d', '#000000', '#120f1e', '#1b1b22', '#2a1430', '#0c1d2b', '#10231a', '#2b1a10'];
 const hexRgb = hx => { const v = parseInt((hx || '#000').slice(1).padEnd(6, '0'), 16); return `${v >> 16 & 255},${v >> 8 & 255},${v & 255}`; };
 async function applyTheme() {
   const p = S.prefs;
@@ -631,7 +632,7 @@ function ratioIcon(id) {
   return `<i class="rt" style="width:${a * s}px;height:${b * s}px"></i>`;
 }
 
-const GRADIENTS = [['#ff6fb5', '#5ab0ff'], ['#ffa06a', '#ff6fb5'], ['#1c1838', '#ff6fb5'], ['#0d0b1c', '#5ab0ff'], ['#7cf2b0', '#5ab0ff'], ['#ffd36a', '#ff4d4d'], ['#b48cff', '#1c1838'], ['#111111', '#444444']];
+const GRADIENTS = [['#000000', '#1e5eff'], ['#ff6fb5', '#5ab0ff'], ['#ffa06a', '#ff6fb5'], ['#1c1838', '#ff6fb5'], ['#0d0b1c', '#5ab0ff'], ['#7cf2b0', '#5ab0ff'], ['#ffd36a', '#ff4d4d'], ['#b48cff', '#1c1838'], ['#111111', '#444444']];
 const BG_COLORS = ['#000000', '#ffffff', '#0d0b1c', '#1c1838', '#ff6fb5', '#ffa06a', '#ffd36a', '#7cf2b0', '#5ab0ff', '#b48cff'];
 function bgPanel() {
   const p = S.project;
@@ -1841,6 +1842,13 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sav
 // ---------------------------------------------------------------- boot
 (async function boot() {
   S.prefs = { ...DEFAULT_PREFS, ...(await db.get('settings', 'prefs') || {}) };
+  if ((S.prefs.v || 1) < 2) {
+    // v2: the default look changed from pink/purple to blue & black.
+    if (S.prefs.accent === '#ff6fb5') S.prefs.accent = DEFAULT_PREFS.accent;
+    if (S.prefs.theme === 'dusk') S.prefs.theme = 'blueblack';
+    if (S.prefs.panelColor === '#120f1e') S.prefs.panelColor = DEFAULT_PREFS.panelColor;
+    S.prefs.v = 2; savePrefs();
+  }
   await applyTheme();
   const params = new URLSearchParams(location.search);
   const shared = await finishPendingImports();

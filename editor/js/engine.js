@@ -351,7 +351,7 @@ export class Engine {
     const bg = this.p.bg || { type: 'blur', level: 3 };
     if (bg.type === 'color') { ctx.fillStyle = bg.color || '#000'; ctx.fillRect(0, 0, W, H); return; }
     if (bg.type === 'gradient') {
-      const [c1, c2] = bg.colors || ['#ff6fb5', '#5ab0ff'];
+      const [c1, c2] = bg.colors || ['#000000', '#1e5eff'];
       const g = ctx.createLinearGradient(0, 0, W, H);
       g.addColorStop(0, c1); g.addColorStop(1, c2);
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); return;
@@ -488,7 +488,7 @@ export class Engine {
         const y = (k - (lines.length - 1) / 2) * lh;
         if (style === 'outline') { ctx.lineWidth = px * 0.14; ctx.lineJoin = 'round'; ctx.strokeStyle = x.strokeColor || '#000'; ctx.strokeText(l, 0, y); }
         if (style === 'shadow') { ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = px * 0.25; ctx.shadowOffsetY = px * 0.06; }
-        if (style === 'neon') { ctx.shadowColor = x.color || '#ff6fb5'; ctx.shadowBlur = px * 0.7; ctx.fillStyle = x.color || '#ff6fb5'; ctx.fillText(l, 0, y); ctx.shadowBlur = px * 0.25; ctx.fillStyle = '#fff'; ctx.fillText(l, 0, y); return; }
+        if (style === 'neon') { ctx.shadowColor = x.color || '#3d8bff'; ctx.shadowBlur = px * 0.7; ctx.fillStyle = x.color || '#3d8bff'; ctx.fillText(l, 0, y); ctx.shadowBlur = px * 0.25; ctx.fillStyle = '#fff'; ctx.fillText(l, 0, y); return; }
         ctx.fillStyle = x.color || '#fff';
         ctx.fillText(l, 0, y);
       });
