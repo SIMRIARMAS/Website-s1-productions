@@ -525,7 +525,7 @@ export class Engine {
   }
 
   // Real-time export: the timeline is played into an offscreen canvas and recorded with sound.
-  async exportVideo({ short = 1080, fps = 30, onProgress }) {
+  async exportVideo({ short = 1080, fps = 30, bitrate, onProgress }) {
     this.pause();
     this.ensureAudio();
     if (this.ac) await this.ac.resume();
@@ -541,7 +541,7 @@ export class Engine {
     const mime = pickRecorderMime();
     const rec = new MediaRecorder(new MediaStream(tracks), {
       mimeType: mime || undefined,
-      videoBitsPerSecond: Math.round(Math.min(16e6, W * H * fps * 0.14)),
+      videoBitsPerSecond: Math.round(bitrate || Math.min(16e6, W * H * fps * 0.14)),
       audioBitsPerSecond: 192000,
     });
     const chunks = [];

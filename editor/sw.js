@@ -1,8 +1,8 @@
 // S1 Studio service worker: offline app shell + receiving files from the phone's share sheet.
-const CACHE = 's1studio-v2';
+const CACHE = 's1studio-v3';
 const RUNTIME = 's1studio-ai';
 const SHELL = ['./', './index.html', './styles.css', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png',
-  './js/app.js', './js/engine.js', './js/gl.js', './js/db.js', './js/ui.js', './js/media.js', './js/icons.js', './js/ai.js', './js/upscale-worker.js'];
+  './js/app.js', './js/engine.js', './js/gl.js', './js/db.js', './js/ui.js', './js/media.js', './js/icons.js', './js/ai.js', './js/upscale-worker.js', './js/search.js', './js/clip-worker.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

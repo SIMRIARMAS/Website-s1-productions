@@ -2,6 +2,7 @@ import { db, uid } from './db.js';
 import { Engine, ASPECTS, TRANSITIONS, layout, totalDuration, clipDuration, audioDuration, mediaRecord, forgetMedia, pickRecorderMime } from './engine.js';
 import { PRESETS, ADJUST_KEYS, filterer, uniformsFor, analyzeFrame } from './gl.js';
 import { ic } from './icons.js';
+import { TOOL_WORDS, SETTINGS_WORDS, score, clipWorker, embedImage, embedText, dot, detectFaces, loadPeople, savePeople, assignPerson, frameCanvas, AI_INDEX_VERSION } from './search.js';
 import { PORTRAIT_MODES, portraitActive, segKind, segmenterReady, segmenterInfo, loadSegmenter, upscale, cancelUpscale } from './ai.js';
 import { $, $$, h, fmtTime, fmtShort, fmtBytes, toast, openSheet, confirmSheet, promptSheet, slider, chips, swatches, section, btn, debounce } from './ui.js';
 import { importFiles, importBlob, pickFiles, saveToDevice, shareFiles, fileNameFor, storageInfo, finishPendingImports, canShareFiles } from './media.js';
@@ -29,26 +30,45 @@ export const THEMES = [
   { id: 'aurora', name: 'Aurora', bg: 'radial-gradient(90% 60% at 20% 10%,#7cf2b033,transparent 60%),radial-gradient(90% 60% at 90% 40%,#b48cff3a,transparent 60%),radial-gradient(90% 60% at 30% 100%,#5ab0ff30,transparent 60%),#0a0d18' },
 ];
 const ACCENTS = ['#ff6fb5', '#ffa06a', '#ffd36a', '#7cf2b0', '#5ab0ff', '#b48cff', '#ffffff'];
-const DEFAULT_PREFS = { id: 'prefs', theme: 'dusk', accent: '#ff6fb5', customBg: null, customColor: null, panels: 'glass', dim: 35, exportRes: 1080, fps: 30 };
+const DEFAULT_PREFS = {
+  id: 'prefs', theme: 'dusk', accent: '#ff6fb5', customBg: null, customColor: null, panels: 'glass', dim: 35, exportRes: 1080, fps: 30,
+  gradient: { a: '#1c1838', b: '#ff6fb5', angle: 160 }, textColor: '#f6f3fb', uiFont: 'Space Grotesk', panelColor: '#120f1e', panelAlpha: 66,
+  myThemes: [], tools: { order: null, hidden: [] }, aiSearch: false, dest: null,
+};
 
 const canvas = $('#preview');
 const engine = new Engine(canvas, $('#hidden-media'));
 const tl = $('#timeline');
 
 // ---------------------------------------------------------------- theme
+const UI_FONTS = ['Space Grotesk', 'Montserrat', 'System', 'Playfair Display', 'Bebas Neue', 'Caveat', 'Permanent Marker', 'Anton'];
+const TEXT_TONES = ['#f6f3fb', '#ffffff', '#fff1e0', '#ffd9ec', '#d9fff0', '#dcecff', '#ffe9a8'];
+const PANEL_TONES = ['#120f1e', '#000000', '#1b1b22', '#2a1430', '#0c1d2b', '#10231a', '#2b1a10'];
+const hexRgb = hx => { const v = parseInt((hx || '#000').slice(1).padEnd(6, '0'), 16); return `${v >> 16 & 255},${v >> 8 & 255},${v & 255}`; };
 async function applyTheme() {
   const p = S.prefs;
   const root = document.documentElement;
   let bg = (THEMES.find(t => t.id === p.theme) || THEMES[0]).bg;
   if (p.theme === 'color' && p.customColor) bg = p.customColor;
+  if (p.theme === 'gradient' && p.gradient) bg = `linear-gradient(${p.gradient.angle}deg, ${p.gradient.a}, ${p.gradient.b})`;
   if (p.theme === 'image' && p.customBg) {
     const m = await mediaRecord(p.customBg);
     if (m) bg = `linear-gradient(rgba(5,4,12,${p.dim / 100}),rgba(5,4,12,${Math.min(0.95, p.dim / 100 + 0.15)})),url("${m.url}") center/cover no-repeat`;
   }
   root.style.setProperty('--app-bg', bg);
   root.style.setProperty('--accent', p.accent);
+  root.style.setProperty('--text', p.textColor);
+  root.style.setProperty('--muted', `color-mix(in srgb, ${p.textColor} 64%, transparent)`);
+  root.style.setProperty('--ui', p.uiFont === 'System' ? 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' : `"${p.uiFont}", system-ui, sans-serif`);
+  const rgb = hexRgb(p.panelColor), a = p.panelAlpha / 100;
+  root.style.setProperty('--panel', `rgba(${rgb},${a})`);
+  root.style.setProperty('--panel-strong', `rgba(${rgb},${Math.min(0.97, a + 0.2)})`);
+  root.style.setProperty('--sheet', `rgba(${rgb},${Math.min(0.97, a + 0.28)})`);
+  root.style.setProperty('--panel-solid', p.panelColor);
   document.body.classList.toggle('solid-panels', p.panels === 'solid');
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', p.panelColor);
 }
+const LOOK_KEYS = ['theme', 'customBg', 'customColor', 'gradient', 'dim', 'accent', 'textColor', 'uiFont', 'panelColor', 'panelAlpha', 'panels'];
 const savePrefs = debounce(() => db.put('settings', S.prefs), 300);
 
 // ---------------------------------------------------------------- routing
@@ -143,6 +163,7 @@ function pickMedia({ kinds, multiple = true, title = 'Add media' }) {
           if (!files.length) return;
           const recs = await importFiles(files);
           recs.forEach(r => media.set(r.id, r));
+          runIndexer();
           finish(recs.filter(r => kinds.includes(r.kind)));
         },
       }));
@@ -520,16 +541,74 @@ const TOOLS = [
   { id: 'snap', label: 'Save frame', icon: 'camera', fn: snapshotFrame, video: true },
   { id: 'del', label: 'Delete', icon: 'trash', fn: deleteClip, video: true },
 ];
+function orderedTools() {
+  const known = TOOLS.map(t => t.id);
+  const ord = (S.prefs.tools?.order || []).filter(id => known.includes(id));
+  return [...ord, ...known.filter(id => !ord.includes(id))].map(id => TOOLS.find(t => t.id === id));
+}
 function renderTools() {
   const bar = $('#tools');
   bar.innerHTML = '';
+  if (!S.project) return;
   const photo = S.project.kind === 'photo';
-  for (const t of TOOLS) {
-    if (photo && t.video) continue;
-    bar.append(h('button', { class: 'tool' + (t.hot ? ' hot' : ''), onclick: () => { engine.pause(); t.fn(); } }, h('span', { html: ic(t.icon) }), t.label));
+  const hidden = new Set(S.prefs.tools?.hidden || []);
+  for (const t of orderedTools()) {
+    if ((photo && t.video) || hidden.has(t.id)) continue;
+    const b = h('button', { class: 'tool' + (t.hot ? ' hot' : ''), onclick: () => { if (b._long) { b._long = false; return; } engine.pause(); t.fn(); } }, h('span', { html: ic(t.icon) }), t.label);
+    let timer;
+    b.addEventListener('pointerdown', () => { timer = setTimeout(() => { b._long = true; toolbarSheet(); }, 550); });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => clearTimeout(timer));
+    b.addEventListener('contextmenu', e => e.preventDefault());
+    bar.append(b);
   }
+  bar.append(h('button', { class: 'tool edit-tools', onclick: toolbarSheet }, h('span', { html: ic('settings') }), 'Customize'));
 }
-
+function toolbarSheet() {
+  S.prefs.tools ||= { order: null, hidden: [] };
+  openSheet('Customize toolbar', (b, close) => {
+    const list = h('div', { class: 'tool-list' });
+    const save = () => {
+      S.prefs.tools.order = $$('.tool-row', list).map(r => r.dataset.id);
+      savePrefs(); renderTools();
+    };
+    const paint = () => {
+      list.innerHTML = '';
+      const hidden = new Set(S.prefs.tools.hidden);
+      for (const t of orderedTools()) {
+        const handle = h('span', { class: 'handle', 'aria-label': 'Drag to move', html: '<svg viewBox="0 0 24 24" class="ic"><path d="M4 8h16M4 12h16M4 16h16"/></svg>' });
+        const row = h('div', { class: 'tool-row' + (hidden.has(t.id) ? ' off' : ''), 'data-id': t.id },
+          handle, h('span', { class: 'tr-ic', html: ic(t.icon) }), h('span', { class: 'tr-name' }, t.label, t.video ? h('small', {}, ' · video') : null),
+          h('label', { class: 'toggle' }, Object.assign(h('input', { type: 'checkbox' }), {
+            checked: !hidden.has(t.id),
+            onchange: e => {
+              const set = new Set(S.prefs.tools.hidden);
+              e.target.checked ? set.delete(t.id) : set.add(t.id);
+              S.prefs.tools.hidden = [...set]; row.classList.toggle('off', !e.target.checked); save();
+            },
+          }), h('i')));
+        // Drag the handle up/down to reorder.
+        handle.addEventListener('pointerdown', e => {
+          e.preventDefault();
+          handle.setPointerCapture(e.pointerId);
+          row.classList.add('dragging');
+          const move = ev => {
+            const prev = row.previousElementSibling, next = row.nextElementSibling;
+            if (next && ev.clientY > next.getBoundingClientRect().top + next.offsetHeight / 2) list.insertBefore(next, row);
+            else if (prev && ev.clientY < prev.getBoundingClientRect().top + prev.offsetHeight / 2) list.insertBefore(prev, row.nextSibling); // move the neighbour, not the dragged row, so the drag isn't dropped
+          };
+          const up = () => { row.classList.remove('dragging'); handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up); save(); };
+          handle.addEventListener('pointermove', move);
+          handle.addEventListener('pointerup', up);
+          handle.addEventListener('pointercancel', up);
+        });
+        list.append(row);
+      }
+    };
+    paint();
+    b.append(h('p', { class: 'hint' }, 'Drag ≡ to move a tool. Switch tools off to hide them.'), list,
+      btn('Reset toolbar', 'reset', () => { S.prefs.tools = { order: null, hidden: [] }; savePrefs(); renderTools(); paint(); }, 'ghost block'));
+  });
+}
 function applyAllBtn(fn, label = 'Apply to all clips') {
   return h('button', { class: 'link-btn', onclick: () => { commit(() => S.project.clips.forEach(fn)); toast('Applied to all clips'); } }, label);
 }
@@ -1072,6 +1151,24 @@ function openTransitionPanel(c) {
 
 // ---------------------------------------------------------------- export
 let wakeLock = null;
+// Where the video is going decides the best size, frame rate and quality.
+const DESTS = [
+  { id: 'youtube', name: 'YouTube', sub: 'Long video · 16:9', aspect: '16:9', res: 2160, fps: 30, mbps: { 720: 6, 1080: 12, 1440: 20, 2160: 40 },
+    note: 'YouTube re-encodes every upload. Sending 4K gets you their best-quality stream, even for people watching in 1080p.' },
+  { id: 'shorts', name: 'YouTube Shorts', sub: 'Vertical · 9:16', aspect: '9:16', res: 2160, fps: 30, max: 180, mbps: { 720: 6, 1080: 12, 1440: 20, 2160: 40 },
+    note: 'Shorts can be up to 3 minutes. 4K vertical uploads keep the most detail.' },
+  { id: 'reels', name: 'Instagram Reels', sub: 'Vertical · 9:16', aspect: '9:16', res: 1080, fps: 30, max: 180, mbps: { 720: 8, 1080: 14, 1440: 20, 2160: 30 },
+    note: 'Instagram plays everything at 1080p, so a 4K upload only gets shrunk. 1080p at a high bitrate looks sharpest. Keep text away from the bottom, where the caption sits.' },
+  { id: 'igpost', name: 'Instagram post', sub: 'Feed · 4:5', aspect: '4:5', res: 1080, fps: 30, mbps: { 720: 8, 1080: 14, 1440: 20, 2160: 30 },
+    note: '4:5 takes up the most room in the feed. Instagram shows it at 1080 wide.' },
+  { id: 'story', name: 'Instagram Story', sub: 'Full screen · 9:16', aspect: '9:16', res: 1080, fps: 30, max: 60, mbps: { 720: 8, 1080: 14, 1440: 20, 2160: 30 },
+    note: 'Stories longer than 60 seconds are split into parts. Leave room at the top and bottom for the reply bar.' },
+  { id: 'tiktok', name: 'TikTok', sub: 'Vertical · 9:16', aspect: '9:16', res: 1080, fps: 30, max: 600, mbps: { 720: 8, 1080: 14, 1440: 20, 2160: 30 },
+    note: 'TikTok plays at 1080p. Keep faces and text away from the right side and bottom, where the buttons and caption go.' },
+  { id: 'custom', name: 'Just save it', sub: 'Pick your own', aspect: null, res: null, fps: null, mbps: { 720: 8, 1080: 14, 1440: 20, 2160: 40 }, note: 'Choose any size. 4K takes the most power.' },
+];
+const RES = [{ id: 720, label: '720p' }, { id: 1080, label: '1080p' }, { id: 1440, label: '2K' }, { id: 2160, label: '4K' }];
+
 async function exportFlow() {
   const p = S.project;
   engine.pause(); closePanel();
@@ -1079,30 +1176,63 @@ async function exportFlow() {
   saveProject.flush();
   if (p.kind === 'photo') return exportPhoto();
   const prefs = S.prefs;
-  openSheet('Export video', (b, close) => {
-    const opts = h('div');
-    const ar = engine.aspect();
-    const resChips = chips([{ id: 720, label: '720p' }, { id: 1080, label: '1080p' }, { id: 1440, label: '2K' }], prefs.exportRes, v => { prefs.exportRes = v; savePrefs(); size(); });
-    const fpsChips = chips([{ id: 24, label: '24' }, { id: 30, label: '30' }, { id: 60, label: '60' }], prefs.fps, v => { prefs.fps = v; savePrefs(); });
-    const sizeTxt = h('p', { class: 'hint' });
-    const size = () => { const { W, H } = engine.outputSize(prefs.exportRes); sizeTxt.textContent = `${W}×${H} · ${(pickRecorderMime() || 'webm').includes('mp4') ? 'MP4' : 'WebM'} · ${fmtShort(engine.total)} long`; };
-    size();
-    opts.append(section('Resolution', resChips), section('Frame rate', fpsChips), sizeTxt,
-      h('p', { class: 'hint' }, 'Exporting plays your video through once in real time. Keep this screen open until it finishes.'),
-      btn('Export', 'download', start, 'primary block'));
-    b.append(opts);
-    void ar;
-    async function start() {
-      opts.remove();
+  openSheet('Where’s this going?', (b, close) => {
+    const pickDest = () => {
+      b.innerHTML = '';
+      const grid = h('div', { class: 'dests' });
+      for (const d of DESTS) grid.append(h('button', { class: 'dest' + (prefs.dest === d.id ? ' on' : ''), onclick: () => { prefs.dest = d.id; savePrefs(); settings(d); } },
+        h('b', {}, d.name), h('small', {}, d.sub)));
+      b.append(grid);
+    };
+    const settings = d => {
+      b.innerHTML = '';
+      const rec = { res: d.res || prefs.exportRes, fps: d.fps || prefs.fps };
+      let res = rec.res, fps = rec.fps, switchAspect = !!d.aspect && p.aspect !== d.aspect;
+      const card = h('div', { class: 'rec-card' });
+      const paintCard = () => {
+        const { W, H } = sizeFor(res);
+        const mb = d.mbps[res];
+        card.innerHTML = '';
+        card.append(h('div', { class: 'rec-title', html: ic('wand') + `Best for ${d.name}` }),
+          h('div', { class: 'rec-specs' },
+            spec('Size', `${W}×${H}`), spec('Shape', switchAspect ? d.aspect : (p.aspect === 'orig' ? 'Original' : p.aspect)),
+            spec('Frames', `${fps} fps`), spec('Quality', `${mb} Mbps`), spec('Format', (pickRecorderMime() || 'webm').includes('mp4') ? 'MP4' : 'WebM')));
+      };
+      const spec = (k, v) => h('div', {}, h('small', {}, k), h('b', {}, v));
+      const sizeFor = r => {
+        if (!switchAspect) return engine.outputSize(r);
+        const keep = p.aspect; p.aspect = d.aspect; const o = engine.outputSize(r); p.aspect = keep; return o;
+      };
+      const warn = h('div');
+      const paintWarn = () => {
+        warn.innerHTML = '';
+        if (d.max && engine.total > d.max) warn.append(h('p', { class: 'hint warn' }, `Your video is ${fmtShort(engine.total)} — ${d.name} allows up to ${fmtShort(d.max)}. Trim it, or it may be cut or split.`));
+        if (res >= 2160) warn.append(h('p', { class: 'hint' }, '4K takes the most power and space. On older phones the export can stutter. If it does, use 2K.'));
+      };
+      const mark = r => r === rec.res ? ' ★' : '';
+      b.append(h('button', { class: 'link-btn', onclick: pickDest }, '← Change destination'), card,
+        d.aspect && p.aspect !== d.aspect ? h('label', { class: 'switch-row' },
+          Object.assign(h('input', { type: 'checkbox' }), { checked: switchAspect, onchange: e => { switchAspect = e.target.checked; paintCard(); } }),
+          h('span', {}, `Change the canvas to ${d.aspect} (recommended — right now it’s ${p.aspect === 'orig' ? 'Original' : p.aspect})`)) : null,
+        section('Resolution', chips(RES.map(r => ({ ...r, label: r.label + mark(r.id) })), res, v => { res = v; paintCard(); paintWarn(); })),
+        section('Frame rate', chips([24, 30, 60].map(v => ({ id: v, label: v + ' fps' + (v === rec.fps && d.fps ? ' ★' : '') })), fps, v => { fps = v; paintCard(); })),
+        h('p', { class: 'hint' }, d.note), warn,
+        h('p', { class: 'hint' }, 'Exporting plays your video through once in real time. Keep this screen open until it finishes.'),
+        btn(`Export for ${d.name}`, 'download', () => start(d, res, fps, switchAspect), 'primary block'));
+      paintCard(); paintWarn();
+    };
+    async function start(d, res, fps, switchAspect) {
+      if (switchAspect) { commit(() => { p.aspect = d.aspect; }); await new Promise(r => setTimeout(r, 50)); }
+      prefs.exportRes = res; prefs.fps = fps; savePrefs();
+      b.innerHTML = '';
       const prog = h('div', { class: 'progress' }, h('div', { class: 'progress-bar' }));
       const pct = h('div', { class: 'progress-pct' }, '0%');
-      const cancel = btn('Cancel', 'close', () => engine.cancelExport(), 'ghost block');
-      b.append(h('div', { class: 'exporting' }, pct, prog, h('p', { class: 'hint center' }, 'Rendering… keep the app open'), cancel));
+      b.append(h('div', { class: 'exporting' }, pct, prog, h('p', { class: 'hint center' }, `Rendering for ${d.name}… keep the app open`), btn('Cancel', 'close', () => engine.cancelExport(), 'ghost block')));
       try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { }
       let blob = null;
       try {
         blob = await engine.exportVideo({
-          short: prefs.exportRes, fps: prefs.fps,
+          short: res, fps, bitrate: d.mbps[res] * 1e6,
           onProgress: f => { const v = Math.min(100, Math.round(f * 100)); pct.textContent = v + '%'; prog.firstChild.style.width = v + '%'; },
         });
       } catch (e) { toast('Export failed: ' + e.message); }
@@ -1110,9 +1240,11 @@ async function exportFlow() {
       b.innerHTML = '';
       if (!blob) { close(); return; }
       const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
-      const r = await importBlob(blob, `${p.name.replace(/[\\/:*?"<>|]/g, '-')}.${ext}`, 'exports');
-      showResult(b, r || { blob, name: `${p.name}.${ext}`, mime: blob.type }, close);
+      const r = await importBlob(blob, `${p.name.replace(/[\\/:*?"<>|]/g, '-')}${d.id === 'custom' ? '' : ' - ' + d.name}.${ext}`, 'exports');
+      showResult(b, r || { blob, name: `${p.name}.${ext}`, mime: blob.type }, close, d);
     }
+    const last = DESTS.find(d => d.id === prefs.dest);
+    if (last) settings(last); else pickDest();
   });
 }
 async function exportPhoto() {
@@ -1135,7 +1267,7 @@ async function exportPhoto() {
       }, 'primary block'));
   });
 }
-function showResult(b, r, close) {
+function showResult(b, r, close, dest) {
   const url = URL.createObjectURL(r.blob);
   const isVid = (r.mime || r.blob.type).startsWith('video');
   b.append(h('div', { class: 'result' },
@@ -1144,7 +1276,7 @@ function showResult(b, r, close) {
     h('div', { class: 'row-btns' },
       btn('Share', 'share', () => shareFiles([r]), 'primary'),
       btn('Save to phone', 'download', () => saveToDevice(r.blob, fileNameFor(r)), 'ghost')),
-    canShareFiles() ? h('p', { class: 'hint center' }, 'Share opens your phone’s share sheet — Quick Share, Instagram, TikTok, Messages…') : null,
+    canShareFiles() ? h('p', { class: 'hint center' }, dest && dest.id !== 'custom' ? `Tap Share, then pick ${dest.name.split(' ')[0]} — or Quick Share, Messages…` : 'Share opens your phone’s share sheet — Quick Share, Instagram, TikTok, Messages…') : null,
     btn('Done', null, () => { URL.revokeObjectURL(url); close(); }, 'ghost block')));
 }
 
@@ -1176,6 +1308,12 @@ async function showLibrary() {
     .filter(m => L.folder === 'all' || (L.folder === 'root' ? !m.folder : m.folder === L.folder))
     .filter(m => L.kind === 'all' || m.kind === L.kind)
     .sort((a, b) => b.created - a.created);
+  const peopleRow = $('#libPeople');
+  peopleRow.innerHTML = '';
+  if (S.prefs.aiSearch) {
+    const ppl = peopleGroups(await mediaPeople());
+    if (ppl.length) peopleRow.append(h('div', { class: 'psec-title' }, 'People'), h('div', { class: 'faces' }, ...ppl.slice(0, 30).map(p => faceChip(p, () => openPerson(p)))));
+  }
   const grid = $('#libGrid');
   grid.innerHTML = '';
   $('#libEmpty').hidden = items.length > 0;
@@ -1291,37 +1429,270 @@ async function showSettings() {
   show('settings');
   const p = S.prefs;
   const body = $('#settingsBody');
+  const keepScroll = body.scrollTop;
   body.innerHTML = '';
+  const refresh = () => { savePrefs(); applyTheme(); showSettings(); };
+  const set = (k, v, full = false) => { p[k] = v; savePrefs(); applyTheme(); if (full) showSettings(); };
+
+  // Background
   const themes = h('div', { class: 'themes' });
-  const paintThemes = () => {
-    themes.innerHTML = '';
-    for (const t of THEMES) themes.append(h('button', { class: 'theme' + (p.theme === t.id ? ' on' : ''), style: { background: t.bg }, onclick: () => { p.theme = t.id; savePrefs(); applyTheme(); paintThemes(); } }, h('span', {}, t.name)));
-  };
-  paintThemes();
-  const custom = h('div', { class: 'row-btns wrap' },
-    btn('Use my photo', 'image', async () => {
-      const [m] = await pickMedia({ kinds: ['image'], multiple: false, title: 'Pick a background photo' });
-      if (!m) return;
-      p.customBg = m.id; p.theme = 'image'; savePrefs(); await applyTheme(); paintThemes(); showSettings();
-    }, p.theme === 'image' ? 'primary' : 'ghost'),
-    h('label', { class: 'btn ghost' + (p.theme === 'color' ? ' on' : '') }, h('span', { html: ic('palette') }), 'Solid color',
-      Object.assign(h('input', { type: 'color', value: p.customColor || '#1c1838', class: 'hidden-color' }), {
-        oninput: e => { p.customColor = e.target.value; p.theme = 'color'; savePrefs(); applyTheme(); paintThemes(); },
-      })));
-  body.append(section('App background', themes, custom));
-  if (p.theme === 'image') body.append(slider({ label: 'Darken', min: 0, max: 85, value: p.dim, fmt: v => v + '%', onInput: v => { p.dim = v; savePrefs(); applyTheme(); } }));
-  body.append(section('Accent color', swatches(ACCENTS, p.accent, v => { p.accent = v; savePrefs(); applyTheme(); })),
-    section('Panels', chips([{ id: 'glass', label: 'Frosted glass' }, { id: 'solid', label: 'Solid' }], p.panels, v => { p.panels = v; savePrefs(); applyTheme(); })),
-    section('Export defaults',
-      chips([{ id: 720, label: '720p' }, { id: 1080, label: '1080p' }, { id: 1440, label: '2K' }], p.exportRes, v => { p.exportRes = v; savePrefs(); }),
-      chips([{ id: 24, label: '24 fps' }, { id: 30, label: '30 fps' }, { id: 60, label: '60 fps' }], p.fps, v => { p.fps = v; savePrefs(); })));
+  for (const t of THEMES) themes.append(h('button', { class: 'theme' + (p.theme === t.id ? ' on' : ''), style: { background: t.bg }, onclick: () => set('theme', t.id, true) }, h('span', {}, t.name)));
+  for (const t of p.myThemes) {
+    const look = t.look;
+    const prev = look.theme === 'gradient' ? `linear-gradient(${look.gradient.angle}deg,${look.gradient.a},${look.gradient.b})` : look.theme === 'color' ? look.customColor : (THEMES.find(x => x.id === look.theme)?.bg || '#222');
+    const b = h('button', { class: 'theme mine', style: { background: prev, color: look.textColor, fontFamily: look.uiFont === 'System' ? '' : `"${look.uiFont}"`, borderColor: look.accent }, onclick: () => { Object.assign(p, structuredClone(look)); refresh(); toast(`“${t.name}” applied`); } },
+      h('span', {}, t.name));
+    b.append(h('i', { class: 'x', html: ic('close'), onclick: async e => { e.stopPropagation(); if (await confirmSheet(`Delete your theme “${t.name}”?`, 'Delete', true)) { p.myThemes = p.myThemes.filter(x => x !== t); refresh(); } } }));
+    themes.append(b);
+  }
+  const g = p.gradient;
+  const gradBox = h('div', { class: 'grad-builder' + (p.theme === 'gradient' ? '' : ' hidden-soft') },
+    h('div', { class: 'grad-preview', style: { background: `linear-gradient(${g.angle}deg, ${g.a}, ${g.b})` } }),
+    h('label', { class: 'btn ghost' }, 'Color 1', Object.assign(h('input', { type: 'color', class: 'hidden-color', value: g.a }), { oninput: e => { g.a = e.target.value; p.theme = 'gradient'; savePrefs(); applyTheme(); gradBox.firstChild.style.background = `linear-gradient(${g.angle}deg, ${g.a}, ${g.b})`; } })),
+    h('label', { class: 'btn ghost' }, 'Color 2', Object.assign(h('input', { type: 'color', class: 'hidden-color', value: g.b }), { oninput: e => { g.b = e.target.value; p.theme = 'gradient'; savePrefs(); applyTheme(); gradBox.firstChild.style.background = `linear-gradient(${g.angle}deg, ${g.a}, ${g.b})`; } })),
+    slider({ label: 'Angle', min: 0, max: 360, value: g.angle, fmt: v => v + '°', onInput: v => { g.angle = v; p.theme = 'gradient'; savePrefs(); applyTheme(); gradBox.firstChild.style.background = `linear-gradient(${g.angle}deg, ${g.a}, ${g.b})`; } }));
+  body.append(section('App background', themes,
+    h('div', { class: 'row-btns wrap' },
+      btn('My photo', 'image', async () => {
+        const [m] = await pickMedia({ kinds: ['image'], multiple: false, title: 'Pick a background photo' });
+        if (m) { p.customBg = m.id; p.theme = 'image'; refresh(); }
+      }, p.theme === 'image' ? 'primary' : 'ghost'),
+      btn('Gradient', 'palette', () => { p.theme = 'gradient'; refresh(); }, p.theme === 'gradient' ? 'primary' : 'ghost'),
+      h('label', { class: 'btn ' + (p.theme === 'color' ? 'primary' : 'ghost') }, h('span', { html: ic('palette') }), 'Solid',
+        Object.assign(h('input', { type: 'color', value: p.customColor || '#1c1838', class: 'hidden-color' }), { oninput: e => { p.customColor = e.target.value; p.theme = 'color'; savePrefs(); applyTheme(); } }))),
+    p.theme === 'gradient' ? gradBox : null,
+    p.theme === 'image' ? slider({ label: 'Darken', min: 0, max: 85, value: p.dim, fmt: v => v + '%', onInput: v => set('dim', v) }) : null));
+
+  // Colors & type
+  const fonts = h('div', { class: 'chips' });
+  for (const f of UI_FONTS) fonts.append(h('button', { class: 'chip' + (p.uiFont === f ? ' on' : ''), style: { fontFamily: f === 'System' ? 'system-ui' : `"${f}"` }, onclick: () => set('uiFont', f, true) }, f));
+  body.append(section('Accent color', swatches(ACCENTS, p.accent, v => set('accent', v))),
+    section('Text color', swatches(TEXT_TONES, p.textColor, v => set('textColor', v))),
+    section('App font', fonts));
+
+  // Panels
+  body.append(section('Panels & menus',
+    chips([{ id: 'glass', label: 'Frosted glass' }, { id: 'solid', label: 'Solid' }], p.panels, v => set('panels', v)),
+    h('div', { class: 'swatch-label' }, 'Panel color'),
+    swatches(PANEL_TONES, p.panelColor, v => set('panelColor', v)),
+    slider({ label: 'See-through', min: 20, max: 95, value: 100 - p.panelAlpha, fmt: v => v + '%', onInput: v => set('panelAlpha', 100 - v) })));
+
+  body.append(section('Save this look',
+    h('p', { class: 'hint' }, 'Keep your background, colors and font as a theme you can switch back to anytime.'),
+    btn('Save as my theme', 'plus', async () => {
+      const name = await promptSheet('Name your theme', `My theme ${p.myThemes.length + 1}`, 'Save');
+      if (!name) return;
+      p.myThemes.push({ name, look: structuredClone(Object.fromEntries(LOOK_KEYS.map(k => [k, p[k]]))) });
+      refresh(); toast('Theme saved');
+    }, 'ghost block'),
+    btn('Reset look to default', 'reset', () => { for (const k of LOOK_KEYS) p[k] = structuredClone(DEFAULT_PREFS[k]); refresh(); }, 'ghost block')));
+
+  body.append(section('Editing toolbar',
+    h('p', { class: 'hint' }, 'Drag tools into the order you like and hide the ones you don’t use. Tip: long-press any tool in the editor.'),
+    btn('Customize toolbar', 'arrange', toolbarSheet, 'ghost block')));
+
+  // AI search
+  const aiSec = section('AI search',
+    h('p', { class: 'hint' }, 'Search your library by what’s in it (“sunset”, “crowd”, “DJ decks”) and find everyone by face. Everything is scanned on this phone — nothing is uploaded. Turning it on downloads about 75 MB once (use Wi-Fi).'),
+    h('label', { class: 'switch-row' }, Object.assign(h('input', { type: 'checkbox' }), {
+      checked: p.aiSearch, onchange: e => { p.aiSearch = e.target.checked; savePrefs(); if (p.aiSearch) runIndexer(); showSettings(); },
+    }), h('span', {}, 'Scan my photos & videos for AI search')),
+    h('p', { class: 'hint', id: 'indexStatus' }, S.indexStatus || ''),
+    p.aiSearch ? btn('Forget faces & AI data', 'trash', async () => {
+      if (!(await confirmSheet('Delete all face groups, names and AI search data from this device?', 'Delete', true))) return;
+      for (const m of (await db.all('media'))) { delete m.emb; delete m.people; delete m.aiv; await db.put('media', m); }
+      await savePeople([]); p.aiSearch = false; savePrefs(); toast('AI data deleted'); showSettings();
+    }, 'ghost danger block') : null);
+  body.append(aiSec);
+
   const info = await storageInfo();
-  const st = h('div', { class: 'psec' }, h('div', { class: 'psec-title' }, 'Storage'),
+  const st = section('Storage',
     h('p', { class: 'hint' }, info ? `${fmtBytes(info.used)} used of ${fmtBytes(info.quota)} available to the app.` : 'Storage info unavailable.'),
     h('p', { class: 'hint' }, 'Your videos, photos and projects stay on this device — nothing is uploaded.'));
   if (info && !info.persisted && navigator.storage?.persist) st.append(btn('Keep my files safe from cleanup', 'check', async () => { const ok = await navigator.storage.persist(); toast(ok ? 'Storage protected' : 'Install the app to protect storage'); showSettings(); }, 'ghost'));
   body.append(st);
   if (S.installPrompt) body.append(section('Install', btn('Add S1 Studio to home screen', 'download', async () => { S.installPrompt.prompt(); S.installPrompt = null; }, 'primary block')));
+  body.scrollTop = keepScroll;
+}
+
+// ---------------------------------------------------------------- AI indexing (content + faces)
+let indexing = false;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function indexNotify() {
+  const el = document.getElementById('indexStatus');
+  if (el) el.textContent = S.indexStatus || '';
+  S.onIndex?.();
+}
+async function runIndexer() {
+  if (indexing || !S.prefs.aiSearch) return;
+  indexing = true;
+  try {
+    await loadMedia();
+    const todo = [...media.values()].filter(m => m.kind !== 'audio' && m.aiv !== AI_INDEX_VERSION);
+    if (!todo.length) { S.indexStatus = 'Library scanned — AI search is ready.'; return; }
+    S.indexStatus = 'Getting AI search ready…'; indexNotify();
+    await clipWorker(pr => { if (pr.total) { S.indexStatus = `Downloading AI search model… ${fmtBytes(pr.loaded)} of ${fmtBytes(pr.total)} (first time only)`; indexNotify(); } });
+    const people = await loadPeople();
+    let i = 0;
+    for (const m of todo) {
+      while (engine.exportTarget || engine.playing) await sleep(1500);
+      const cv = await frameCanvas(m);
+      if (cv) {
+        try { m.emb = await embedImage(cv); } catch { }
+        try { const faces = await detectFaces(cv); m.people = [...new Set(faces.map(f => assignPerson(people, f)))]; } catch { m.people = []; }
+      }
+      m.aiv = AI_INDEX_VERSION;
+      await db.put('media', m);
+      i++;
+      S.indexStatus = `Scanning your library… ${i} of ${todo.length}`; indexNotify();
+      if (i % 4 === 0) await savePeople(people);
+    }
+    await savePeople(people);
+    S.indexStatus = `Done — scanned ${todo.length} item${todo.length > 1 ? 's' : ''}. AI search is ready.`;
+  } catch (e) {
+    S.indexStatus = 'AI search couldn’t start: ' + e.message;
+  } finally { indexing = false; indexNotify(); }
+}
+const mediaPeople = async () => { const people = await loadPeople(); return people.filter(p => p.n > 0); };
+const personMedia = (person, people) => {
+  const ids = new Set(person.name ? people.filter(p => p.name && p.name.toLowerCase() === person.name.toLowerCase()).map(p => p.id) : [person.id]);
+  return [...media.values()].filter(m => (m.people || []).some(id => ids.has(id))).sort((a, b) => b.created - a.created);
+};
+// Group same-named clusters so naming two groups the same merges them.
+function peopleGroups(people) {
+  const groups = new Map();
+  for (const p of people) {
+    const key = p.name ? 'n:' + p.name.toLowerCase() : 'id:' + p.id;
+    if (!groups.has(key)) groups.set(key, { ...p, count: 0 });
+    groups.get(key).count += p.n;
+  }
+  return [...groups.values()].sort((a, b) => (!!b.name - !!a.name) || b.count - a.count);
+}
+function faceChip(p, onclick) {
+  return h('button', { class: 'face', onclick }, h('img', { src: p.thumb, alt: p.name || 'Unnamed person' }), h('span', {}, p.name || 'Add name'));
+}
+async function openPerson(person) {
+  await loadMedia();
+  const people = await loadPeople();
+  openSheet(person.name || 'Who is this?', (b, close) => {
+    const items = personMedia(person, people);
+    const name = h('input', { class: 'field', value: person.name || '', placeholder: 'Add a name…', maxlength: 40 });
+    name.addEventListener('change', async () => {
+      const v = name.value.trim();
+      const ids = person.name ? people.filter(p => p.name && p.name.toLowerCase() === person.name.toLowerCase()).map(p => p.id) : [person.id];
+      for (const p of people) if (ids.includes(p.id)) p.name = v;
+      await savePeople(people);
+      person.name = v;
+      toast(v ? `Saved — search “${v}” to find them` : 'Name removed');
+      if (document.body.dataset.screen === 'library') showLibrary();
+    });
+    const grid = h('div', { class: 'grid pick' });
+    for (const m of items) grid.append(mediaTile(m, () => { close(); useMedia(m); }));
+    b.append(h('div', { class: 'person-head' }, h('img', { src: person.thumb, alt: '' }), name),
+      h('p', { class: 'hint' }, `${items.length} photo${items.length === 1 ? '' : 's'}/video${items.length === 1 ? '' : 's'} on this phone. Name two groups the same to merge them.`),
+      grid,
+      items.some(m => m.kind !== 'audio') ? btn(`Make a video with ${person.name || 'them'}`, 'video', async () => {
+        close();
+        const p = newProject('video');
+        p.name = person.name ? `${person.name} edit` : p.name;
+        p.clips = items.filter(m => m.kind !== 'audio').slice(0, 30).reverse().map(newClip);
+        await db.put('projects', p); go('#editor/' + p.id);
+      }, 'primary block') : null);
+  }, { wide: true });
+}
+// What tapping a search result does depends on where you are.
+function useMedia(m) {
+  if (S.project && document.body.dataset.screen === 'editor') {
+    if (m.kind === 'audio') return addAudio(m);
+    const p = S.project;
+    const after = S.sel?.kind === 'clip' ? p.clips.findIndex(c => c.id === S.sel.id) + 1 : p.clips.length;
+    commit(() => p.clips.splice(after, 0, newClip(m)));
+    return toast(`Added “${m.name}”`);
+  }
+  viewMedia(m);
+}
+
+function openSearch() {
+  const inEditor = !!S.project && document.body.dataset.screen === 'editor';
+  if (inEditor) { engine.pause(); closePanel(); }
+  openSheet('Search', async (b, close) => {
+    await loadMedia();
+    let people = await mediaPeople();
+    const input = h('input', { class: 'field search-input', type: 'search', placeholder: inEditor ? 'Search tools, filters, music, people…' : 'Search files, people, projects, settings…', enterkeyhint: 'search' });
+    const results = h('div', { class: 'search-results' });
+    b.append(h('div', { class: 'search-bar' }, h('span', { html: ic('search') }), input), results);
+    const projects = inEditor ? [] : await db.all('projects');
+    let seq = 0;
+    const sec = (title, ...kids) => h('div', { class: 'psec' }, h('div', { class: 'psec-title' }, title), ...kids);
+    const run = async () => {
+      const q = input.value.trim();
+      const my = ++seq;
+      if (!q) people = await mediaPeople();
+      if (my !== seq) return;
+      results.innerHTML = '';
+      if (!q) {
+        const sugg = inEditor ? ['blur background', 'slow motion', 'louder', 'text', 'vintage', 'sharpen', 'upscale'] : ['sunset', 'crowd', 'night', 'music', 'DJ'];
+        results.append(sec('Try', h('div', { class: 'chips' }, ...sugg.map(s => h('button', { class: 'chip', onclick: () => { input.value = s; run(); } }, s)))));
+        if (people.length) results.append(sec('People', h('div', { class: 'faces' }, ...peopleGroups(people).slice(0, 20).map(p => faceChip(p, () => { close(); openPerson(p); })))));
+        if (!S.prefs.aiSearch) results.append(h('div', { class: 'ai-banner' },
+          h('b', { html: ic('wand') + 'Turn on AI search' }),
+          h('p', {}, 'Find photos and videos by what’s in them, and everyone by face. Scanned on this phone, never uploaded.'),
+          btn('Turn on', 'check', () => { S.prefs.aiSearch = true; savePrefs(); runIndexer(); run(); }, 'primary')));
+        else if (indexing || S.indexStatus) results.append(h('p', { class: 'hint', id: 'indexStatus' }, S.indexStatus));
+        return;
+      }
+      // Tools
+      if (inEditor) {
+        const photo = S.project.kind === 'photo';
+        const tools = TOOLS.filter(t => !(photo && t.video)).map(t => ({ t, s: score(q, t.label, TOOL_WORDS[t.id]) })).filter(x => x.s).sort((a, z) => z.s - a.s).slice(0, 6);
+        if (tools.length) results.append(sec('Tools', h('div', { class: 'tool-results' }, ...tools.map(({ t }) =>
+          h('button', { class: 'tool', onclick: () => { close(); t.fn(); } }, h('span', { html: ic(t.icon) }), t.label)))));
+        const filters = PRESETS.filter(f => f.id !== 'none').map(f => ({ f, s: score(q, f.name, 'filter look') })).filter(x => x.s >= 45).sort((a, z) => z.s - a.s);
+        if (filters.length) results.append(sec('Filters — tap to apply', h('div', { class: 'chips' }, ...filters.map(({ f }) =>
+          h('button', { class: 'chip', onclick: () => { const c = target(); if (!c) return; commit(() => { c.filter = f.id; }); toast(`${f.name} applied`); } }, f.name)))));
+        const trs = TRANSITIONS.filter(x => x.id !== 'none').map(x => ({ x, s: score(q, x.name, 'transition') })).filter(x => x.s >= 45);
+        if (trs.length) results.append(sec('Transitions — after this clip', h('div', { class: 'chips' }, ...trs.map(({ x }) =>
+          h('button', { class: 'chip', onclick: () => { const c = target(); if (!c) return; commit(() => { c.transition = { type: x.id, dur: c.transition?.dur || 0.6 }; }); toast(`${x.name} transition added`); } }, x.name)))));
+      }
+      // People
+      const pm = peopleGroups(people).filter(p => p.name && score(q, p.name));
+      if (pm.length) results.append(sec('People', h('div', { class: 'faces' }, ...pm.map(p => faceChip(p, () => { close(); openPerson(p); })))));
+      // Files by name
+      const files = [...media.values()].map(m => ({ m, s: score(q, m.name.replace(/\.[^.]+$/, ''), m.kind === 'audio' ? 'audio song music sound' : m.kind === 'video' ? 'video clip' : 'photo picture image') }))
+        .filter(x => x.s >= 40).sort((a, z) => z.s - a.s || z.m.created - a.m.created).slice(0, 24);
+      const audio = files.filter(x => x.m.kind === 'audio'), visual = files.filter(x => x.m.kind !== 'audio');
+      if (audio.length) results.append(sec(inEditor ? 'Music & sounds — tap to add' : 'Audio', h('div', { class: 'menu' }, ...audio.map(({ m }) =>
+        h('button', { onclick: () => { close(); useMedia(m); }, html: ic('music') + m.name })))));
+      if (visual.length) results.append(sec(inEditor ? 'Videos & photos — tap to add' : 'Videos & photos', h('div', { class: 'grid pick' }, ...visual.map(({ m }) => mediaTile(m, () => { close(); useMedia(m); })))));
+      // Projects & settings
+      const pr = projects.map(p => ({ p, s: score(q, p.name, 'project') })).filter(x => x.s >= 40);
+      if (pr.length) results.append(sec('Projects', h('div', { class: 'menu' }, ...pr.map(({ p }) => h('button', { onclick: () => { close(); go('#editor/' + p.id); }, html: ic(p.kind === 'photo' ? 'image' : 'video') + p.name })))));
+      if (score(q, 'settings', SETTINGS_WORDS) >= 40) results.append(sec('Settings', h('div', { class: 'menu' },
+        h('button', { onclick: () => { close(); go('#settings'); }, html: ic('palette') + 'Themes, colors & fonts' }),
+        h('button', { onclick: () => { close(); toolbarSheet(); }, html: ic('arrange') + 'Customize toolbar' }))));
+      // AI: content search
+      const indexed = [...media.values()].filter(m => m.emb);
+      if (S.prefs.aiSearch && indexed.length && q.length >= 2) {
+        const slot = sec('✨ AI: looks like “' + q + '”', h('p', { class: 'hint' }, 'Searching…'));
+        results.append(slot);
+        try {
+          const v = await embedText(q);
+          if (my !== seq) return;
+          const ranked = indexed.map(m => ({ m, s: dot(v, m.emb) })).sort((a, z) => z.s - a.s);
+          const best = ranked[0]?.s || 0;
+          const hits = ranked.filter(x => x.s >= Math.max(0.12, best - 0.06)).slice(0, 18);
+          slot.lastChild.remove();
+          if (hits.length) slot.append(h('div', { class: 'grid pick' }, ...hits.map(({ m }) => mediaTile(m, () => { close(); useMedia(m); }))));
+          else slot.append(h('p', { class: 'hint' }, 'No close matches.'));
+        } catch (e) { slot.lastChild.textContent = 'AI search unavailable: ' + e.message; }
+      } else if (S.prefs.aiSearch && indexing) results.append(h('p', { class: 'hint', id: 'indexStatus' }, S.indexStatus));
+      if (!results.children.length) results.append(h('p', { class: 'empty' }, `Nothing found for “${q}”.`));
+    };
+    input.addEventListener('input', debounce(run, 220));
+    S.onIndex = () => { if (!input.value) run(); };
+    run();
+    setTimeout(() => input.focus(), 250);
+  }, { wide: true, onClose: () => { S.onIndex = null; } });
 }
 
 // ---------------------------------------------------------------- wiring
@@ -1334,6 +1705,7 @@ $('#playBtn').onclick = () => engine.toggle();
 $('#undoBtn').onclick = undo;
 $('#redoBtn').onclick = redo;
 $('#exportBtn').onclick = exportFlow;
+$$('.search-btn').forEach(b => b.addEventListener('click', openSearch));
 $('#projName').addEventListener('change', e => { if (S.project) { S.project.name = e.target.value.trim() || S.project.name; saveProject(); } });
 $('#libImport').onclick = async () => {
   const files = await pickFiles('video/*,image/*,audio/*', true);
@@ -1342,6 +1714,7 @@ $('#libImport').onclick = async () => {
   const recs = await importFiles(files, folder);
   if (recs.length) toast(`Imported ${recs.length} item${recs.length > 1 ? 's' : ''}`);
   showLibrary();
+  runIndexer();
 };
 $('#selectBtn').onclick = () => { if (S.lib.selecting) endSelect(); else { S.lib.selecting = true; updateSelBar(); } };
 $('#kindBar').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.lib.kind = b.dataset.kind; showLibrary(); } });
@@ -1368,6 +1741,7 @@ window.addEventListener('drop', async e => {
 window.addEventListener('keydown', e => {
   if (!S.project || /INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return;
   if (e.code === 'Space') { e.preventDefault(); engine.toggle(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   if (e.key === 'Escape') closePanel();
 });
@@ -1387,5 +1761,6 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sav
     toast(`${params.get('shared') || shared} file(s) received`);
   }
   route();
+  if (S.prefs.aiSearch) setTimeout(runIndexer, 4000);
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
 })();
