@@ -155,4 +155,33 @@ export async function frameCanvas(m, size = 512) {
   }
   return null;
 }
-export const AI_INDEX_VERSION = 1;
+// Several moments across a video (every ~4 s, at most 24), so search can find a scene anywhere in it.
+export async function videoMoments(m, onFrame, size = 384) {
+  const url = URL.createObjectURL(m.blob);
+  const v = document.createElement('video');
+  v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+  const c = document.createElement('canvas');
+  try {
+    if (!(await once(v, 'loadeddata', 8000))) return;
+    const dur = m.duration || v.duration || 0;
+    const n = Math.max(1, Math.min(24, Math.round(dur / 4)));
+    const k = Math.min(1, size / Math.max(v.videoWidth, v.videoHeight));
+    c.width = Math.max(1, Math.round(v.videoWidth * k)); c.height = Math.max(1, Math.round(v.videoHeight * k));
+    const x = c.getContext('2d', { willReadFrequently: true });
+    for (let i = 0; i < n; i++) {
+      const t = Math.min(Math.max(0, dur - 0.1), dur * (i + 0.5) / n);
+      v.currentTime = t;
+      await once(v, 'seeked', 5000);
+      x.drawImage(v, 0, 0, c.width, c.height);
+      await onFrame(c, t, i, n);
+    }
+  } finally { v.removeAttribute('src'); v.load(); URL.revokeObjectURL(url); }
+}
+export function meanVec(vs) {
+  const out = new Array(vs[0].length).fill(0);
+  for (const v of vs) for (let i = 0; i < v.length; i++) out[i] += v[i];
+  const n = Math.hypot(...out) || 1;
+  return out.map(x => x / n);
+}
+// Version 2: videos are indexed at several moments, not one frame.
+export const AI_INDEX_VERSION = 2;

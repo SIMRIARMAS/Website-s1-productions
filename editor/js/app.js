@@ -2,7 +2,7 @@ import { db, uid } from './db.js';
 import { Engine, ASPECTS, TRANSITIONS, layout, totalDuration, clipDuration, audioDuration, mediaRecord, forgetMedia, pickRecorderMime } from './engine.js';
 import { PRESETS, ADJUST_KEYS, filterer, uniformsFor, analyzeFrame } from './gl.js';
 import { ic } from './icons.js';
-import { TOOL_WORDS, SETTINGS_WORDS, score, clipWorker, embedImage, embedText, dot, detectFaces, loadPeople, savePeople, assignPerson, frameCanvas, AI_INDEX_VERSION } from './search.js';
+import { TOOL_WORDS, SETTINGS_WORDS, score, clipWorker, embedImage, embedText, dot, detectFaces, loadPeople, savePeople, assignPerson, frameCanvas, videoMoments, meanVec, AI_INDEX_VERSION } from './search.js';
 import { PORTRAIT_MODES, portraitActive, segKind, segmenterReady, segmenterInfo, loadSegmenter, upscale, cancelUpscale } from './ai.js';
 import { $, $$, h, fmtTime, fmtShort, fmtBytes, toast, openSheet, confirmSheet, promptSheet, slider, chips, swatches, section, btn, debounce } from './ui.js';
 import { importFiles, importBlob, pickFiles, saveToDevice, shareFiles, fileNameFor, storageInfo, finishPendingImports, canShareFiles } from './media.js';
@@ -1500,7 +1500,7 @@ async function showSettings() {
     h('p', { class: 'hint', id: 'indexStatus' }, S.indexStatus || ''),
     p.aiSearch ? btn('Forget faces & AI data', 'trash', async () => {
       if (!(await confirmSheet('Delete all face groups, names and AI search data from this device?', 'Delete', true))) return;
-      for (const m of (await db.all('media'))) { delete m.emb; delete m.people; delete m.aiv; await db.put('media', m); }
+      for (const m of (await db.all('media'))) { delete m.emb; delete m.frames; delete m.people; delete m.aiv; await db.put('media', m); }
       await savePeople([]); p.aiSearch = false; savePrefs(); toast('AI data deleted'); showSettings();
     }, 'ghost danger block') : null);
   body.append(aiSec);
@@ -1536,10 +1536,25 @@ async function runIndexer() {
     let i = 0;
     for (const m of todo) {
       while (engine.exportTarget || engine.playing) await sleep(1500);
-      const cv = await frameCanvas(m);
-      if (cv) {
-        try { m.emb = await embedImage(cv); } catch { }
-        try { const faces = await detectFaces(cv); m.people = [...new Set(faces.map(f => assignPerson(people, f)))]; } catch { m.people = []; }
+      if (m.kind === 'video') {
+        // Look at several moments; check faces on every other one to save time.
+        const frames = [], ids = new Set();
+        try {
+          await videoMoments(m, async (cv, t, k, n) => {
+            try { frames.push({ t, emb: await embedImage(cv) }); } catch { }
+            if (k % 2 === 0 || n <= 3) { try { for (const f of await detectFaces(cv)) ids.add(assignPerson(people, f)); } catch { } }
+            S.indexStatus = `Scanning your library… ${i + 1} of ${todo.length} (video moment ${k + 1}/${n})`; indexNotify();
+          });
+        } catch { }
+        m.frames = frames;
+        if (frames.length) m.emb = meanVec(frames.map(f => f.emb));
+        m.people = [...ids];
+      } else {
+        const cv = await frameCanvas(m);
+        if (cv) {
+          try { m.emb = await embedImage(cv); } catch { }
+          try { const faces = await detectFaces(cv); m.people = [...new Set(faces.map(f => assignPerson(people, f)))]; } catch { m.people = []; }
+        }
       }
       m.aiv = AI_INDEX_VERSION;
       await db.put('media', m);
@@ -1600,6 +1615,17 @@ async function openPerson(person) {
       }, 'primary block') : null);
   }, { wide: true });
 }
+// Quick look at a result; videos start at the moment search found.
+function previewMedia(m, t) {
+  const url = URL.createObjectURL(m.blob);
+  openSheet(m.name, b => {
+    if (m.kind === 'video') {
+      const v = h('video', { src: url, controls: true, playsinline: true, autoplay: true, class: 'result-media' });
+      v.addEventListener('loadedmetadata', () => { if (t != null) v.currentTime = Math.max(0, t - 1); }, { once: true });
+      b.append(v);
+    } else b.append(h('img', { src: url, class: 'result-media', alt: m.name }));
+  }, { onClose: () => URL.revokeObjectURL(url), wide: true });
+}
 // What tapping a search result does depends on where you are.
 function useMedia(m) {
   if (S.project && document.body.dataset.screen === 'editor') {
@@ -1623,6 +1649,49 @@ function openSearch() {
     b.append(h('div', { class: 'search-bar' }, h('span', { html: ic('search') }), input), results);
     const projects = inEditor ? [] : await db.all('projects');
     let seq = 0;
+    // Results are picked (numbered in order), then turned into a video or added to this one.
+    const picked = new Map(); // media id -> { m, t }
+    const foot = h('div', { class: 'sticky-foot pick-foot', hidden: true });
+    b.append(foot);
+    const paintPicks = () => {
+      const n = picked.size;
+      $$('.search-results .tile', b).forEach(t => { const k = [...picked.keys()].indexOf(t.dataset.id); t.classList.toggle('picked', k >= 0); t.dataset.n = k >= 0 ? k + 1 : ''; });
+      foot.hidden = !n;
+      foot.innerHTML = '';
+      if (!n) return;
+      const moments = [...picked.values()].some(x => x.t != null);
+      foot.append(h('div', { class: 'pick-row' }, h('span', {}, `${n} picked`), h('button', { class: 'link-btn', onclick: () => { picked.clear(); paintPicks(); } }, 'Clear')),
+        moments ? h('p', { class: 'hint' }, 'Videos are added from the moment AI found (about 6 seconds) — trim it longer in the editor.') : null,
+        btn(inEditor ? `Add ${n} to this video` : `Make a video with ${n}`, inEditor ? 'plus' : 'video', async () => {
+          const clips = [...picked.values()].map(({ m, t }) => {
+            const c = newClip(m);
+            if (m.kind === 'video' && t != null) { c.in = Math.max(0, t - 2); c.out = Math.min(m.duration || c.out, t + 4); }
+            return c;
+          });
+          close();
+          if (inEditor) {
+            const p = S.project;
+            const after = S.sel?.kind === 'clip' ? p.clips.findIndex(c => c.id === S.sel.id) + 1 : p.clips.length;
+            commit(() => p.clips.splice(after, 0, ...clips));
+            toast(`Added ${clips.length} clip${clips.length > 1 ? 's' : ''}`);
+          } else {
+            const p = newProject('video');
+            p.name = input.value.trim() ? input.value.trim().replace(/^./, c => c.toUpperCase()) : p.name;
+            p.clips = clips;
+            await db.put('projects', p);
+            go('#editor/' + p.id);
+          }
+        }, 'primary block'));
+    };
+    const hitTile = (m, t) => {
+      const tile = mediaTile(m, () => {
+        if (picked.has(m.id)) picked.delete(m.id); else picked.set(m.id, { m, t });
+        paintPicks();
+      });
+      if (t != null && m.kind === 'video') tile.append(h('span', { class: 'badge at' }, 'at ' + fmtShort(t).replace(/\.\ds$/, 's')));
+      tile.append(h('span', { class: 'peek', role: 'button', 'aria-label': 'Preview', html: ic('play'), onclick: e => { e.stopPropagation(); previewMedia(m, t); } }));
+      return tile;
+    };
     const sec = (title, ...kids) => h('div', { class: 'psec' }, h('div', { class: 'psec-title' }, title), ...kids);
     const run = async () => {
       const q = input.value.trim();
@@ -1663,7 +1732,7 @@ function openSearch() {
       const audio = files.filter(x => x.m.kind === 'audio'), visual = files.filter(x => x.m.kind !== 'audio');
       if (audio.length) results.append(sec(inEditor ? 'Music & sounds — tap to add' : 'Audio', h('div', { class: 'menu' }, ...audio.map(({ m }) =>
         h('button', { onclick: () => { close(); useMedia(m); }, html: ic('music') + m.name })))));
-      if (visual.length) results.append(sec(inEditor ? 'Videos & photos — tap to add' : 'Videos & photos', h('div', { class: 'grid pick' }, ...visual.map(({ m }) => mediaTile(m, () => { close(); useMedia(m); })))));
+      if (visual.length) results.append(sec('Videos & photos by name — tap to pick', h('div', { class: 'grid pick' }, ...visual.map(({ m }) => hitTile(m)))));
       // Projects & settings
       const pr = projects.map(p => ({ p, s: score(q, p.name, 'project') })).filter(x => x.s >= 40);
       if (pr.length) results.append(sec('Projects', h('div', { class: 'menu' }, ...pr.map(({ p }) => h('button', { onclick: () => { close(); go('#editor/' + p.id); }, html: ic(p.kind === 'photo' ? 'image' : 'video') + p.name })))));
@@ -1673,20 +1742,40 @@ function openSearch() {
       // AI: content search
       const indexed = [...media.values()].filter(m => m.emb);
       if (S.prefs.aiSearch && indexed.length && q.length >= 2) {
-        const slot = sec('✨ AI: looks like “' + q + '”', h('p', { class: 'hint' }, 'Searching…'));
+        // "Simri DJing" → only media with Simri, ranked by "DJing".
+        const named = peopleGroups(people).filter(p => p.name);
+        const who = named.find(p => new RegExp(`(^|\\s)${p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`, 'i').test(q));
+        let rest = q, pool = indexed;
+        if (who) {
+          rest = q.replace(new RegExp(who.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '').replace(/\b(of|with|and|at|in|on|is|me|my)\b/gi, ' ').trim();
+          const ids = new Set(people.filter(p => p.name && p.name.toLowerCase() === who.name.toLowerCase()).map(p => p.id));
+          pool = indexed.filter(m => (m.people || []).some(id => ids.has(id)));
+        }
+        const slot = sec(who ? `✨ AI: ${who.name}${rest ? ' · ' + rest : ''} — tap to pick` : '✨ AI: looks like “' + q + '” — tap to pick', h('p', { class: 'hint' }, 'Searching…'));
         results.append(slot);
         try {
-          const v = await embedText(q);
+          let hits;
+          if (who && !rest) hits = pool.map(m => ({ m, s: 1 }));
+          else {
+            const v = await embedText(rest || q);
+            if (my !== seq) return;
+            // Videos score by their best-matching moment, and remember when it is.
+            const ranked = pool.map(m => {
+              if (m.frames?.length) { let s = -1, t = 0; for (const f of m.frames) { const d = dot(v, f.emb); if (d > s) { s = d; t = f.t; } } return { m, s, t }; }
+              return { m, s: dot(v, m.emb) };
+            }).sort((a, z) => z.s - a.s);
+            const best = ranked[0]?.s || 0;
+            hits = ranked.filter(x => x.s >= Math.max(0.12, best - 0.06)).slice(0, 24);
+          }
           if (my !== seq) return;
-          const ranked = indexed.map(m => ({ m, s: dot(v, m.emb) })).sort((a, z) => z.s - a.s);
-          const best = ranked[0]?.s || 0;
-          const hits = ranked.filter(x => x.s >= Math.max(0.12, best - 0.06)).slice(0, 18);
           slot.lastChild.remove();
-          if (hits.length) slot.append(h('div', { class: 'grid pick' }, ...hits.map(({ m }) => mediaTile(m, () => { close(); useMedia(m); }))));
-          else slot.append(h('p', { class: 'hint' }, 'No close matches.'));
+          if (hits.length) slot.append(h('div', { class: 'grid pick' }, ...hits.map(x => hitTile(x.m, x.t))));
+          else slot.append(h('p', { class: 'hint' }, who ? `No photos of ${who.name} match that.` : 'No close matches.'));
+          paintPicks();
         } catch (e) { slot.lastChild.textContent = 'AI search unavailable: ' + e.message; }
       } else if (S.prefs.aiSearch && indexing) results.append(h('p', { class: 'hint', id: 'indexStatus' }, S.indexStatus));
       if (!results.children.length) results.append(h('p', { class: 'empty' }, `Nothing found for “${q}”.`));
+      paintPicks();
     };
     input.addEventListener('input', debounce(run, 220));
     S.onIndex = () => { if (!input.value) run(); };

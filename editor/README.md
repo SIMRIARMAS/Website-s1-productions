@@ -17,6 +17,7 @@ Open `editor/` on any HTTPS host (GitHub Pages works), then use **Add to Home sc
 - **AI Portrait:** on-device person segmentation (MediaPipe). It can blur, dim, recolor or replace the background, or cut you out, live on video and in exports. A "Light on you" slider brightens just the person. Cut-out photos save as transparent PNGs.
 - **AI Upscale & Restore:** the Swin2SR 4× model rebuilds detail and removes noise and JPEG blockiness on photos. It uses the GPU (WebGPU) when the phone has one.
 - **Search (🔍 on every screen, Ctrl+K on desktop):** finds tools by what you mean ("slow motion" → Speed, "blur background" → AI), filters and transitions (tap to apply), music, files, projects and settings.
+- **Search, pick, make a video:** search for a thing ("dog", "red car", "DJ") or a person plus a thing ("Me DJing"), tap results to pick them in order, then make a video or add them to the one you're editing. In videos, search finds the best moment ("at 1:24") and adds about 6 seconds around it.
 - **AI search (opt-in):** MobileCLIP finds photos and videos by what's in them ("DJ playing music", "cowboy hat"). Face recognition (face-api) groups photos into people you can name and search. Scanning happens on the phone.
 - **Export by destination:** choose YouTube, Shorts, Reels, an Instagram post or Story, TikTok, or custom. The app suggests the best shape, resolution (up to 4K), frame rate and bitrate, and warns about length limits.
 - **Customizable toolbar:** drag tools into any order and hide the ones you don't use. Long-press a tool, or tap Customize.
