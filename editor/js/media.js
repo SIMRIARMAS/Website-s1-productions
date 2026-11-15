@@ -101,7 +101,7 @@ export async function importFiles(files, folder = null) {
 export async function finishPendingImports() {
   const all = await db.all('media');
   let n = 0;
-  for (const m of all) if (m.needsMeta) {
+  for (const m of all) if (m.needsMeta && !m.pendingShare) {
     const meta = await probe(m.blob, m.kind);
     Object.assign(m, meta, { needsMeta: false });
     await db.put('media', m);

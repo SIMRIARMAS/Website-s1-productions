@@ -1,6 +1,7 @@
 // Search: smart matching for tools/filters/files, plus on-device AI for media content
 // (MobileCLIP) and people (face-api face recognition, grouped into people you can name).
 import { db } from './db.js';
+import { cdnGuard } from './cdn-guard.js';
 
 // ---------------------------------------------------------------- word matching
 export const TOOL_WORDS = {
@@ -51,8 +52,8 @@ let progressFn = null;
 export function clipWorker(onProgress) {
   if (onProgress) progressFn = onProgress;
   if (readyP) return readyP;
-  worker = new Worker(new URL('./clip-worker.js', import.meta.url), { type: 'module' });
-  readyP = new Promise((res, rej) => {
+  readyP = cdnGuard().then(() => new Promise((res, rej) => {
+    worker = new Worker(new URL('./clip-worker.js', import.meta.url), { type: 'module' });
     worker.onmessage = e => {
       const d = e.data;
       if (d.type === 'progress') progressFn?.(d);
@@ -61,9 +62,9 @@ export function clipWorker(onProgress) {
       else if (d.type === 'error') rej(new Error(d.message));
     };
     worker.onerror = e => rej(new Error(e.message || 'AI search failed to start'));
-  });
+    worker.postMessage({ type: 'load' });
+  }));
   readyP.catch(() => { worker?.terminate(); worker = null; readyP = null; });
-  worker.postMessage({ type: 'load' });
   return readyP;
 }
 const ask = msg => new Promise((res, rej) => { const id = nextId++; pending.set(id, { res, rej }); worker.postMessage({ ...msg, id }, msg.data ? [msg.data] : []); });
@@ -88,6 +89,7 @@ const FA = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15';
 let faP;
 function faceapi() {
   return faP ||= (async () => {
+    await cdnGuard();
     const fa = await import(`${FA}/dist/face-api.esm.js`);
     try { await fa.tf.setBackend('webgl'); } catch { }
     await fa.tf.ready();

@@ -28,6 +28,14 @@ Open `editor/` on any HTTPS host (GitHub Pages works), then use **Add to Home sc
 
 Everything is stored on the device in IndexedDB. Nothing is uploaded.
 
+## Security
+
+- **Checked AI downloads:** the AI features load code from cdn.jsdelivr.net. The service worker compares every one of those files with a SHA-256 fingerprint in `trusted-files.js` and blocks any file that isn't on the list or has changed. AI features wait until that check is running. After you change an AI library version, run `node editor/tools/update-trusted.mjs` to rebuild the list.
+- **No stale copies:** only checked files are saved for offline use, and the saved AI files are cleared whenever the list changes.
+- **Shared files need your OK:** any website can try to send files to the share target, so files shared into the app wait for you to tap **Keep** or **Discard**. A single share holds at most 50 files and 4 GB.
+- **Content Security Policy:** `index.html` lists the only sites the app may load scripts, styles, fonts and data from.
+- **Not fingerprinted yet:** the AI model data (MediaPipe `.tflite` files and the Hugging Face models). They're data rather than code, but they come from Google and Hugging Face without a fingerprint.
+
 ## Files
 
 - `index.html`, `styles.css`: app shell
@@ -38,7 +46,9 @@ Everything is stored on the device in IndexedDB. Nothing is uploaded.
 - `js/ai.js`, `js/upscale-worker.js`: AI Portrait and AI Upscale
 - `js/search.js`, `js/clip-worker.js`: search, AI content search and people
 - `js/db.js`: IndexedDB storage
-- `sw.js`, `manifest.webmanifest`: offline support, install and share target
+- `sw.js`, `manifest.webmanifest`: offline support, install, share target and the AI download check
+- `trusted-files.js`, `tools/update-trusted.mjs`: fingerprints of allowed outside files, and the script that rebuilds them
+- `js/cdn-guard.js`: makes AI features wait until the download check is running
 
 ## Known limits
 

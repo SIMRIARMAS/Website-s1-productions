@@ -3,6 +3,7 @@
 //    background can be blurred, dimmed, replaced or cut out (live, works on video).
 //  • AI Upscale & Restore — Swin2SR super-resolution (in a worker) rebuilds detail at 4×
 //    and cleans noise / JPEG blockiness on photos.
+import { cdnGuard } from './cdn-guard.js';
 
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 const SEG = {
@@ -26,10 +27,11 @@ let visionP;
 
 function vision() {
   return visionP ||= (async () => {
+    await cdnGuard();
     const m = await import(`${MP}/vision_bundle.mjs`);
     const files = await m.FilesetResolver.forVisionTasks(`${MP}/wasm`);
     return { m, files };
-  })();
+  })().catch(e => { visionP = null; throw e; });
 }
 
 export function loadSegmenter(kind) {
@@ -175,9 +177,9 @@ const pending = new Map();
 let statusFn = null;
 
 function getWorker() {
-  if (worker) return workerReady;
-  worker = new Worker(new URL('./upscale-worker.js', import.meta.url), { type: 'module' });
-  workerReady = new Promise((res, rej) => {
+  if (workerReady) return workerReady;
+  workerReady = cdnGuard().then(() => new Promise((res, rej) => {
+    worker = new Worker(new URL('./upscale-worker.js', import.meta.url), { type: 'module' });
     worker.onmessage = e => {
       const d = e.data;
       if (d.type === 'progress') statusFn?.(d);
@@ -189,9 +191,9 @@ function getWorker() {
       }
     };
     worker.onerror = e => rej(new Error(e.message || 'AI worker failed to start'));
-  });
-  worker.postMessage({ type: 'load' });
-  workerReady.catch(() => { worker?.terminate(); worker = null; });
+    worker.postMessage({ type: 'load' });
+  }));
+  workerReady.catch(() => { worker?.terminate(); worker = null; workerReady = null; });
   return workerReady;
 }
 export function cancelUpscale() {
