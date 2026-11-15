@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>S1 Studio</title>
+  <meta name="description" content="S1 Studio — edit videos and photos on your phone: trim, filters, auto enhance, text, music, export and share.">
+  <meta name="theme-color" content="#0d0b1c">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Caveat:wght@700&family=Montserrat:wght@500;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Space+Grotesk:wght@500;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-screen="home">
+  <div class="app-bg" aria-hidden="true"></div>
+
+  <!-- HOME -->
+  <section class="screen" id="home">
+    <header class="top">
+      <div class="brand"><span class="logo">S1</span><span>Studio</span></div>
+      <button class="icon-btn" data-go="#settings" aria-label="Settings &amp; theme">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M12 21a9 9 0 1 1 9-9c0 2.5-2 3.5-4 3.5h-1.5a2 2 0 0 0-1.4 3.4A1.3 1.3 0 0 1 12 21z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="14.5" cy="7" r="1.2"/></svg>
+      </button>
+    </header>
+    <div class="home-body">
+      <div class="create">
+        <button class="create-main" id="newVideo">
+          <svg viewBox="0 0 24 24" class="ic"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-4v12l-6-4"/></svg>
+          <span><b>New video</b><small>Clips, photos, music, text</small></span>
+        </button>
+        <div class="create-row">
+          <button class="create-sub" id="newPhoto">
+            <svg viewBox="0 0 24 24" class="ic"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <b>Photo</b>
+          </button>
+          <button class="create-sub" id="openLibrary">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            <b>Library</b>
+          </button>
+        </div>
+      </div>
+      <h2 class="h2">Projects</h2>
+      <p class="empty" id="noProjects">No projects yet. Tap <b>New video</b> to start.</p>
+      <div class="proj-grid" id="projects"></div>
+    </div>
+  </section>
+
+  <!-- EDITOR -->
+  <section class="screen" id="editor" hidden>
+    <header class="top ed-top">
+      <button class="icon-btn" id="edBack" aria-label="Back to projects"><svg viewBox="0 0 24 24" class="ic"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <input id="projName" class="proj-title" aria-label="Project name" maxlength="60">
+      <button class="btn primary sm" id="exportBtn">Export</button>
+    </header>
+    <div class="stage" id="stage"><canvas id="preview" aria-label="Preview"></canvas></div>
+    <div class="transport">
+      <span class="tc"><b id="time">0:00.0</b> / <span id="dur">0:00.0</span></span>
+      <button class="play" id="playBtn" aria-label="Play"><svg viewBox="0 0 24 24" class="ic"><path d="M7 4.5v15l13-7.5z" fill="currentColor" stroke="none"/></svg></button>
+      <span class="ur">
+        <button class="icon-btn" id="undoBtn" aria-label="Undo" disabled><svg viewBox="0 0 24 24" class="ic"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+        <button class="icon-btn" id="redoBtn" aria-label="Redo" disabled><svg viewBox="0 0 24 24" class="ic"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+      </span>
+    </div>
+    <div class="timeline-wrap">
+      <div class="timeline" id="timeline"><div class="tl-inner" id="tlInner"></div></div>
+      <div class="playhead" aria-hidden="true"></div>
+    </div>
+    <nav class="tools" id="tools" aria-label="Editing tools"></nav>
+    <div class="panel" id="panel" hidden>
+      <div class="panel-head">
+        <h3 id="panelTitle"></h3>
+        <button class="icon-btn done" id="panelDone" aria-label="Done"><svg viewBox="0 0 24 24" class="ic"><path d="M5 12l5 5L20 7"/></svg></button>
+      </div>
+      <div class="panel-body" id="panelBody"></div>
+    </div>
+  </section>
+
+  <!-- LIBRARY -->
+  <section class="screen" id="library" hidden>
+    <header class="top">
+      <button class="icon-btn" data-go="#home" aria-label="Back"><svg viewBox="0 0 24 24" class="ic"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <h1 class="title">Library</h1>
+      <span class="top-actions">
+        <button class="icon-btn" id="selectBtn" aria-label="Select items"></button>
+        <button class="btn primary sm" id="libImport"><svg viewBox="0 0 24 24" class="ic"><path d="M12 15V3M7 8l5-5 5 5M4 21h16"/></svg>Import</button>
+      </span>
+    </header>
+    <div class="lib-body">
+      <div class="chips scroll" id="folders"></div>
+      <div class="seg" id="kindBar">
+        <button data-kind="all">All</button><button data-kind="video">Videos</button><button data-kind="image">Photos</button><button data-kind="audio">Audio</button>
+      </div>
+      <p class="empty" id="libEmpty" hidden>Nothing here yet. Tap <b>Import</b> to bring in videos, photos or songs from your phone — or share them to S1 Studio from your gallery.</p>
+      <div class="grid" id="libGrid"></div>
+      <p class="hint center" id="libStorage"></p>
+    </div>
+    <div class="sel-bar" id="selBar">
+      <span id="selCount"></span>
+      <button data-act="share"><svg viewBox="0 0 24 24" class="ic"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Share</button>
+      <button data-act="save"><svg viewBox="0 0 24 24" class="ic"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Save</button>
+      <button data-act="move"><svg viewBox="0 0 24 24" class="ic"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6M12.5 10.5L15 13l-2.5 2.5"/></svg>Move</button>
+      <button data-act="delete" class="danger"><svg viewBox="0 0 24 24" class="ic"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>Delete</button>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="screen" id="settings" hidden>
+    <header class="top">
+      <button class="icon-btn" data-go="#home" aria-label="Back"><svg viewBox="0 0 24 24" class="ic"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <h1 class="title">Look &amp; settings</h1>
+      <span></span>
+    </header>
+    <div class="settings-body" id="settingsBody"></div>
+  </section>
+
+  <div id="sheets"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="hidden-media" aria-hidden="true"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
